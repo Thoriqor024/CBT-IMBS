@@ -1987,7 +1987,7 @@ if(!tenantRuntime){
 app.use(express.static(path.resolve(__dirname, '../dist')));
 
 // Catch-all handler: serve index.html for any non-API route (React Router)
-app.use('*', (_req, res) => {
+app.use('/**', (_req, res) => {
   res.sendFile(path.resolve(__dirname, '../dist/index.html'));
 });
 
