@@ -1,0 +1,72 @@
+# render.yaml - CBT IMBS Render.com deployment configuration
+# Free tier: Web Service + PostgreSQL
+
+services:
+  - type: web
+    name: cbt-imbs
+    env: docker
+    dockerfilePath: ./Dockerfile.render
+    plan: free
+    region: singapore  # or us-west-1, us-east-1, etc.
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TENANCY_ENABLED
+        value: "false"
+      - key: PORT
+        value: 10000
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: DB_HOST
+        fromDatabase:
+          name: cbt-imbs-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: cbt-imbs-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: cbt-imbs-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: cbt-imbs-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: cbt-imbs-db
+          property: password
+      - key: DB_POOL_MAX
+        value: "20"
+      - key: DB_CONNECTION_TIMEOUT_MS
+        value: "5000"
+      - key: DB_QUERY_TIMEOUT_MS
+        value: "5000"
+      - key: QUESTION_MEDIA_DIR
+        value: /app/uploads/question-media
+      - key: QUESTION_MEDIA_MAX_TOTAL_BYTES
+        value: "1073741824"
+      - key: SEED_ADMIN_PASSWORD
+        value: admin123
+      - key: SEED_TEACHER_PASSWORD
+        value: guru123
+      - key: SEED_PLATFORM_OWNER_PASSWORD
+        value: platform-owner
+      - key: ROTATE_DEMO_SEED_PASSWORDS
+        value: "false"
+      - key: LEGACY_BOOTSTRAP_SEED_ENABLED
+        value: "true"
+      - key: VITE_API_BASE_URL
+        value: ""
+      - key: VITE_SHOW_DEMO_ACCOUNTS
+        value: "false"
+      - key: VITE_TENANCY_ENABLED
+        value: "false"
+    healthCheckPath: /api/health
+
+databases:
+  - name: cbt-imbs-db
+    plan: free
+    region: singapore
+    ipAllowList: []

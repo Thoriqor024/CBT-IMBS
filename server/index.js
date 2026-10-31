@@ -1979,6 +1979,14 @@ if(!tenantRuntime){
   const settingsAtStartup=await pool.query('SELECT violation_threshold FROM school_settings WHERE id=1');
   defaultViolationThreshold=Number(settingsAtStartup.rows[0]?.violation_threshold||2);
 }
+// Serve static files from the React build (for Render single-container deployment)
+app.use(express.static(path.resolve(__dirname, '../dist')));
+
+// Catch-all handler: serve index.html for any non-API route (React Router)
+app.get('*', (_req, res) => {
+  res.sendFile(path.resolve(__dirname, '../dist/index.html'));
+});
+
 const server = app.listen(port,'0.0.0.0',()=>console.log(`IMBS CBT API listening on ${port}`));
 const poolSampler = observability.createPoolSampler({ pool:controlPool });
 poolSampler.start();

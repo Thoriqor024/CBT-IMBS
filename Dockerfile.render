@@ -1,0 +1,42 @@
+# ============================================================
+# CBT IMBS - Unified Dockerfile for Render (free tier)
+# Builds React frontend + Express API in a single container
+# ============================================================
+
+# Stage 1: Build React frontend
+FROM node:22-alpine AS frontend
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+ARG VITE_API_BASE_URL=""
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ARG VITE_SHOW_DEMO_ACCOUNTS=false
+ENV VITE_SHOW_DEMO_ACCOUNTS=$VITE_SHOW_DEMO_ACCOUNTS
+ARG VITE_TENANCY_ENABLED=false
+ENV VITE_TENANCY_ENABLED=$VITE_TENANCY_ENABLED
+RUN npm run build
+
+# Stage 2: Run Express API + serve static files
+FROM node:22-alpine AS runtime
+WORKDIR /app
+
+# Install production dependencies only
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Copy built React app from frontend stage
+COPY --from=frontend /app/dist ./dist
+
+# Copy server code
+COPY server ./server
+
+# Copy uploads directory (empty, will be created at runtime)
+RUN mkdir -p uploads/question-media
+
+# Port Render expects (default 10000, overridable via PORT env)
+ENV PORT=10000
+EXPOSE 10000
+
+# Start Express API (which also serves static React files)
+CMD ["node", "server/index.js"]
