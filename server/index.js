@@ -1987,7 +1987,9 @@ if(!tenantRuntime){
 app.use(express.static(path.resolve(__dirname, '../dist')));
 
 // Catch-all handler: serve index.html for any non-API route (React Router)
-app.use('/**', (_req, res) => {
+// Catch-all handler: serve index.html for any non-API route (React Router)
+// Express 5 no longer supports '*' pattern - use middleware without path
+app.use((_req, res) => {
   res.sendFile(path.resolve(__dirname, '../dist/index.html'));
 });
 
