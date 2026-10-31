@@ -5,7 +5,11 @@ import bcrypt from 'bcryptjs';
 import { randomBytes, randomInt, randomUUID } from 'node:crypto';
 import multer from 'multer';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { mkdir, readFile, readdir, rename, rm } from 'node:fs/promises';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import pg from 'pg';
 import { configureTenantDatabaseContext, pool, initializeDatabase, getPoolConfig } from './db.js';
