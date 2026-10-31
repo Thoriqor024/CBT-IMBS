@@ -1986,12 +1986,13 @@ if(!tenantRuntime){
 // Serve static files from the React build (for Render single-container deployment)
 app.use(express.static(path.resolve(__dirname, '../dist')));
 
-// Catch-all handler: serve index.html for SPA routes only (not /api/ or /assets/)
+// Catch-all handler: serve index.html for SPA routes only (not /api/ or static assets)
 app.use((req, res, next) => {
-  // Jangan tangani request API atau static assets
-  if (req.path.startsWith('/api/') || req.path.startsWith('/assets/') || req.path.includes('.')) {
-    return next();
-  }
+  // Skip API routes
+  if (req.path.startsWith('/api/')) return next();
+  // Skip static asset files - let express.static handle them (returns 404 if not found)
+  if (/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|json|webp)$/i.test(req.path)) return next();
+  // Serve index.html for all other routes (React Router SPA)
   res.sendFile(path.resolve(__dirname, '../dist/index.html'));
 });
 
