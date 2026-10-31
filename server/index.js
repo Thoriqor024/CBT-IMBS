@@ -1986,10 +1986,12 @@ if(!tenantRuntime){
 // Serve static files from the React build (for Render single-container deployment)
 app.use(express.static(path.resolve(__dirname, '../dist')));
 
-// Catch-all handler: serve index.html for any non-API route (React Router)
-// Catch-all handler: serve index.html for any non-API route (React Router)
-// Express 5 no longer supports '*' pattern - use middleware without path
-app.use((_req, res) => {
+// Catch-all handler: serve index.html for SPA routes only (not /api/ or /assets/)
+app.use((req, res, next) => {
+  // Jangan tangani request API atau static assets
+  if (req.path.startsWith('/api/') || req.path.startsWith('/assets/') || req.path.includes('.')) {
+    return next();
+  }
   res.sendFile(path.resolve(__dirname, '../dist/index.html'));
 });
 
