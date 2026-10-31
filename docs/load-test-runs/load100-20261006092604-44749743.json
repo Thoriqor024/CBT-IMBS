@@ -1,0 +1,1358 @@
+{
+  "version": 1,
+  "runId": "20261006092604-44749743",
+  "createdAt": "2026-10-06T09:26:04.609Z",
+  "className": "LOAD-100-20261006092604-44749743",
+  "examTitle": "Load Test 100 20261006092604-44749743",
+  "fixtureIds": {
+    "users": [
+      {
+        "id": 1458,
+        "username": "IMBS-2FE3E"
+      },
+      {
+        "id": 1459,
+        "username": "IMBS-102E6"
+      },
+      {
+        "id": 1460,
+        "username": "IMBS-91983"
+      },
+      {
+        "id": 1461,
+        "username": "IMBS-AFE95"
+      },
+      {
+        "id": 1462,
+        "username": "IMBS-7B7AA"
+      },
+      {
+        "id": 1463,
+        "username": "IMBS-ED14E"
+      },
+      {
+        "id": 1464,
+        "username": "IMBS-858AE"
+      },
+      {
+        "id": 1465,
+        "username": "IMBS-6D136"
+      },
+      {
+        "id": 1466,
+        "username": "IMBS-695F5"
+      },
+      {
+        "id": 1467,
+        "username": "IMBS-D2674"
+      },
+      {
+        "id": 1468,
+        "username": "IMBS-B502F"
+      },
+      {
+        "id": 1469,
+        "username": "IMBS-9462F"
+      },
+      {
+        "id": 1470,
+        "username": "IMBS-141D9"
+      },
+      {
+        "id": 1471,
+        "username": "IMBS-C0F4C"
+      },
+      {
+        "id": 1472,
+        "username": "IMBS-5B8FF"
+      },
+      {
+        "id": 1473,
+        "username": "IMBS-F6049"
+      },
+      {
+        "id": 1474,
+        "username": "IMBS-E0B9D"
+      },
+      {
+        "id": 1475,
+        "username": "IMBS-7ABF4"
+      },
+      {
+        "id": 1476,
+        "username": "IMBS-36FDD"
+      },
+      {
+        "id": 1477,
+        "username": "IMBS-18301"
+      },
+      {
+        "id": 1478,
+        "username": "IMBS-A85C5"
+      },
+      {
+        "id": 1479,
+        "username": "IMBS-E4E55"
+      },
+      {
+        "id": 1480,
+        "username": "IMBS-3DC2F"
+      },
+      {
+        "id": 1481,
+        "username": "IMBS-5784C"
+      },
+      {
+        "id": 1482,
+        "username": "IMBS-D8B48"
+      },
+      {
+        "id": 1483,
+        "username": "IMBS-360E5"
+      },
+      {
+        "id": 1484,
+        "username": "IMBS-DF43C"
+      },
+      {
+        "id": 1485,
+        "username": "IMBS-66E31"
+      },
+      {
+        "id": 1486,
+        "username": "IMBS-F93BB"
+      },
+      {
+        "id": 1487,
+        "username": "IMBS-C5397"
+      },
+      {
+        "id": 1488,
+        "username": "IMBS-E0407"
+      },
+      {
+        "id": 1489,
+        "username": "IMBS-D431A"
+      },
+      {
+        "id": 1490,
+        "username": "IMBS-51D24"
+      },
+      {
+        "id": 1491,
+        "username": "IMBS-9BB66"
+      },
+      {
+        "id": 1492,
+        "username": "IMBS-0AC19"
+      },
+      {
+        "id": 1493,
+        "username": "IMBS-7EE2C"
+      },
+      {
+        "id": 1494,
+        "username": "IMBS-38837"
+      },
+      {
+        "id": 1495,
+        "username": "IMBS-48062"
+      },
+      {
+        "id": 1496,
+        "username": "IMBS-E1FFB"
+      },
+      {
+        "id": 1497,
+        "username": "IMBS-FE5D5"
+      },
+      {
+        "id": 1498,
+        "username": "IMBS-20A09"
+      },
+      {
+        "id": 1499,
+        "username": "IMBS-FEB75"
+      },
+      {
+        "id": 1500,
+        "username": "IMBS-F165D"
+      },
+      {
+        "id": 1501,
+        "username": "IMBS-663C5"
+      },
+      {
+        "id": 1502,
+        "username": "IMBS-C183D"
+      },
+      {
+        "id": 1503,
+        "username": "IMBS-90C49"
+      },
+      {
+        "id": 1504,
+        "username": "IMBS-60CF4"
+      },
+      {
+        "id": 1505,
+        "username": "IMBS-305A2"
+      },
+      {
+        "id": 1506,
+        "username": "IMBS-35B6C"
+      },
+      {
+        "id": 1507,
+        "username": "IMBS-54B22"
+      },
+      {
+        "id": 1508,
+        "username": "IMBS-CF55B"
+      },
+      {
+        "id": 1509,
+        "username": "IMBS-C886C"
+      },
+      {
+        "id": 1510,
+        "username": "IMBS-608E8"
+      },
+      {
+        "id": 1511,
+        "username": "IMBS-496B0"
+      },
+      {
+        "id": 1512,
+        "username": "IMBS-FB7F1"
+      },
+      {
+        "id": 1513,
+        "username": "IMBS-75FE9"
+      },
+      {
+        "id": 1514,
+        "username": "IMBS-78D66"
+      },
+      {
+        "id": 1515,
+        "username": "IMBS-C2176"
+      },
+      {
+        "id": 1516,
+        "username": "IMBS-B02CE"
+      },
+      {
+        "id": 1517,
+        "username": "IMBS-AE2FB"
+      },
+      {
+        "id": 1518,
+        "username": "IMBS-14DDC"
+      },
+      {
+        "id": 1519,
+        "username": "IMBS-F2DCA"
+      },
+      {
+        "id": 1520,
+        "username": "IMBS-8EA85"
+      },
+      {
+        "id": 1521,
+        "username": "IMBS-836B6"
+      },
+      {
+        "id": 1522,
+        "username": "IMBS-CE18B"
+      },
+      {
+        "id": 1523,
+        "username": "IMBS-AA3BB"
+      },
+      {
+        "id": 1524,
+        "username": "IMBS-3A92C"
+      },
+      {
+        "id": 1525,
+        "username": "IMBS-11582"
+      },
+      {
+        "id": 1526,
+        "username": "IMBS-88522"
+      },
+      {
+        "id": 1527,
+        "username": "IMBS-56A74"
+      },
+      {
+        "id": 1528,
+        "username": "IMBS-B5218"
+      },
+      {
+        "id": 1529,
+        "username": "IMBS-8D423"
+      },
+      {
+        "id": 1530,
+        "username": "IMBS-2CB9D"
+      },
+      {
+        "id": 1531,
+        "username": "IMBS-E9B19"
+      },
+      {
+        "id": 1532,
+        "username": "IMBS-2B1DF"
+      },
+      {
+        "id": 1533,
+        "username": "IMBS-B6FD0"
+      },
+      {
+        "id": 1534,
+        "username": "IMBS-799ED"
+      },
+      {
+        "id": 1535,
+        "username": "IMBS-4A22D"
+      },
+      {
+        "id": 1536,
+        "username": "IMBS-43660"
+      },
+      {
+        "id": 1537,
+        "username": "IMBS-BF292"
+      },
+      {
+        "id": 1538,
+        "username": "IMBS-081F2"
+      },
+      {
+        "id": 1539,
+        "username": "IMBS-E9159"
+      },
+      {
+        "id": 1540,
+        "username": "IMBS-25704"
+      },
+      {
+        "id": 1541,
+        "username": "IMBS-531D3"
+      },
+      {
+        "id": 1542,
+        "username": "IMBS-EAAC6"
+      },
+      {
+        "id": 1543,
+        "username": "IMBS-DFCC3"
+      },
+      {
+        "id": 1544,
+        "username": "IMBS-CE885"
+      },
+      {
+        "id": 1545,
+        "username": "IMBS-71792"
+      },
+      {
+        "id": 1546,
+        "username": "IMBS-730B8"
+      },
+      {
+        "id": 1547,
+        "username": "IMBS-E7297"
+      },
+      {
+        "id": 1548,
+        "username": "IMBS-41AF4"
+      },
+      {
+        "id": 1549,
+        "username": "IMBS-53D38"
+      },
+      {
+        "id": 1550,
+        "username": "IMBS-516CE"
+      },
+      {
+        "id": 1551,
+        "username": "IMBS-FB2D2"
+      },
+      {
+        "id": 1552,
+        "username": "IMBS-B9B22"
+      },
+      {
+        "id": 1553,
+        "username": "IMBS-6CA4B"
+      },
+      {
+        "id": 1554,
+        "username": "IMBS-CCC50"
+      },
+      {
+        "id": 1555,
+        "username": "IMBS-B42B6"
+      },
+      {
+        "id": 1556,
+        "username": "IMBS-FB413"
+      },
+      {
+        "id": 1557,
+        "username": "IMBS-5BBF2"
+      }
+    ],
+    "exams": [
+      {
+        "id": 28
+      }
+    ],
+    "sessions": [
+      {
+        "id": 1955,
+        "studentId": 1458
+      },
+      {
+        "id": 1956,
+        "studentId": 1459
+      },
+      {
+        "id": 1957,
+        "studentId": 1460
+      },
+      {
+        "id": 1958,
+        "studentId": 1461
+      },
+      {
+        "id": 1959,
+        "studentId": 1462
+      },
+      {
+        "id": 1960,
+        "studentId": 1463
+      },
+      {
+        "id": 1961,
+        "studentId": 1464
+      },
+      {
+        "id": 1962,
+        "studentId": 1465
+      },
+      {
+        "id": 1963,
+        "studentId": 1466
+      },
+      {
+        "id": 1964,
+        "studentId": 1467
+      },
+      {
+        "id": 1965,
+        "studentId": 1468
+      },
+      {
+        "id": 1966,
+        "studentId": 1469
+      },
+      {
+        "id": 1967,
+        "studentId": 1470
+      },
+      {
+        "id": 1968,
+        "studentId": 1471
+      },
+      {
+        "id": 1969,
+        "studentId": 1472
+      },
+      {
+        "id": 1970,
+        "studentId": 1473
+      },
+      {
+        "id": 1971,
+        "studentId": 1474
+      },
+      {
+        "id": 1972,
+        "studentId": 1475
+      },
+      {
+        "id": 1973,
+        "studentId": 1476
+      },
+      {
+        "id": 1974,
+        "studentId": 1477
+      },
+      {
+        "id": 1975,
+        "studentId": 1478
+      },
+      {
+        "id": 1976,
+        "studentId": 1479
+      },
+      {
+        "id": 1977,
+        "studentId": 1480
+      },
+      {
+        "id": 1978,
+        "studentId": 1481
+      },
+      {
+        "id": 1979,
+        "studentId": 1482
+      },
+      {
+        "id": 1980,
+        "studentId": 1483
+      },
+      {
+        "id": 1981,
+        "studentId": 1484
+      },
+      {
+        "id": 1982,
+        "studentId": 1485
+      },
+      {
+        "id": 1983,
+        "studentId": 1486
+      },
+      {
+        "id": 1984,
+        "studentId": 1487
+      },
+      {
+        "id": 1985,
+        "studentId": 1488
+      },
+      {
+        "id": 1986,
+        "studentId": 1489
+      },
+      {
+        "id": 1987,
+        "studentId": 1490
+      },
+      {
+        "id": 1988,
+        "studentId": 1491
+      },
+      {
+        "id": 1989,
+        "studentId": 1492
+      },
+      {
+        "id": 1990,
+        "studentId": 1493
+      },
+      {
+        "id": 1991,
+        "studentId": 1494
+      },
+      {
+        "id": 1992,
+        "studentId": 1495
+      },
+      {
+        "id": 1993,
+        "studentId": 1496
+      },
+      {
+        "id": 1994,
+        "studentId": 1497
+      },
+      {
+        "id": 1995,
+        "studentId": 1498
+      },
+      {
+        "id": 1996,
+        "studentId": 1499
+      },
+      {
+        "id": 1997,
+        "studentId": 1500
+      },
+      {
+        "id": 1998,
+        "studentId": 1501
+      },
+      {
+        "id": 1999,
+        "studentId": 1502
+      },
+      {
+        "id": 2000,
+        "studentId": 1503
+      },
+      {
+        "id": 2001,
+        "studentId": 1504
+      },
+      {
+        "id": 2002,
+        "studentId": 1505
+      },
+      {
+        "id": 2003,
+        "studentId": 1506
+      },
+      {
+        "id": 2004,
+        "studentId": 1507
+      },
+      {
+        "id": 2005,
+        "studentId": 1508
+      },
+      {
+        "id": 2006,
+        "studentId": 1509
+      },
+      {
+        "id": 2007,
+        "studentId": 1510
+      },
+      {
+        "id": 2008,
+        "studentId": 1511
+      },
+      {
+        "id": 2009,
+        "studentId": 1512
+      },
+      {
+        "id": 2010,
+        "studentId": 1513
+      },
+      {
+        "id": 2011,
+        "studentId": 1514
+      },
+      {
+        "id": 2012,
+        "studentId": 1515
+      },
+      {
+        "id": 2013,
+        "studentId": 1516
+      },
+      {
+        "id": 2014,
+        "studentId": 1517
+      },
+      {
+        "id": 2015,
+        "studentId": 1518
+      },
+      {
+        "id": 2016,
+        "studentId": 1519
+      },
+      {
+        "id": 2017,
+        "studentId": 1520
+      },
+      {
+        "id": 2018,
+        "studentId": 1521
+      },
+      {
+        "id": 2019,
+        "studentId": 1522
+      },
+      {
+        "id": 2020,
+        "studentId": 1523
+      },
+      {
+        "id": 2021,
+        "studentId": 1524
+      },
+      {
+        "id": 2022,
+        "studentId": 1525
+      },
+      {
+        "id": 2023,
+        "studentId": 1526
+      },
+      {
+        "id": 2024,
+        "studentId": 1527
+      },
+      {
+        "id": 2025,
+        "studentId": 1528
+      },
+      {
+        "id": 2026,
+        "studentId": 1529
+      },
+      {
+        "id": 2027,
+        "studentId": 1530
+      },
+      {
+        "id": 2028,
+        "studentId": 1531
+      },
+      {
+        "id": 2029,
+        "studentId": 1532
+      },
+      {
+        "id": 2030,
+        "studentId": 1533
+      },
+      {
+        "id": 2031,
+        "studentId": 1534
+      },
+      {
+        "id": 2032,
+        "studentId": 1535
+      },
+      {
+        "id": 2033,
+        "studentId": 1536
+      },
+      {
+        "id": 2034,
+        "studentId": 1537
+      },
+      {
+        "id": 2035,
+        "studentId": 1538
+      },
+      {
+        "id": 2036,
+        "studentId": 1539
+      },
+      {
+        "id": 2037,
+        "studentId": 1540
+      },
+      {
+        "id": 2038,
+        "studentId": 1541
+      },
+      {
+        "id": 2039,
+        "studentId": 1542
+      },
+      {
+        "id": 2040,
+        "studentId": 1543
+      },
+      {
+        "id": 2041,
+        "studentId": 1544
+      },
+      {
+        "id": 2042,
+        "studentId": 1545
+      },
+      {
+        "id": 2043,
+        "studentId": 1546
+      },
+      {
+        "id": 2044,
+        "studentId": 1547
+      },
+      {
+        "id": 2045,
+        "studentId": 1548
+      },
+      {
+        "id": 2046,
+        "studentId": 1549
+      },
+      {
+        "id": 2047,
+        "studentId": 1550
+      },
+      {
+        "id": 2048,
+        "studentId": 1551
+      },
+      {
+        "id": 2049,
+        "studentId": 1552
+      },
+      {
+        "id": 2050,
+        "studentId": 1553
+      },
+      {
+        "id": 2051,
+        "studentId": 1554
+      },
+      {
+        "id": 2052,
+        "studentId": 1555
+      },
+      {
+        "id": 2053,
+        "studentId": 1556
+      },
+      {
+        "id": 2054,
+        "studentId": 1557
+      }
+    ],
+    "examQuestions": [
+      {
+        "sessionId": 1955,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1956,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1957,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1958,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1959,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1960,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1961,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1962,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1963,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1964,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1965,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1966,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1967,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1968,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1969,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1970,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1971,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1972,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1973,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1974,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1975,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1976,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1977,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1978,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1979,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1980,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1981,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1982,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1983,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1984,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1985,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1986,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1987,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1988,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1989,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1990,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1991,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1992,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1993,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1994,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1995,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1996,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1997,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1998,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1999,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2000,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2001,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2002,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2003,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2004,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2005,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2006,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2007,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2008,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2009,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2010,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2011,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2012,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2013,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2014,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2015,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2016,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2017,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2018,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2019,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2020,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2021,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2022,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2023,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2024,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2025,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2026,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2027,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2028,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2029,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2030,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2031,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2032,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2033,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2034,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2035,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2036,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2037,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2038,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2039,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2040,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2041,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2042,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2043,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2044,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2045,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2046,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2047,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2048,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2049,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2050,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2051,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2052,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2053,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2054,
+        "questionId": 2
+      }
+    ],
+    "responses": [
+      {
+        "sessionId": 1978,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1998,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2005,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1961,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1999,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1962,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2003,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2017,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1974,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1980,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1982,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1970,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2016,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1968,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1979,
+        "questionId": 4
+      },
+      {
+        "sessionId": 1972,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1967,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2054,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2025,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2026,
+        "questionId": 1
+      },
+      {
+        "sessionId": 1969,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2047,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2030,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2023,
+        "questionId": 2
+      },
+      {
+        "sessionId": 1984,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2036,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2033,
+        "questionId": 2
+      },
+      {
+        "sessionId": 2039,
+        "questionId": 1
+      },
+      {
+        "sessionId": 2035,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2052,
+        "questionId": 4
+      },
+      {
+        "sessionId": 2040,
+        "questionId": 1
+      }
+    ]
+  },
+  "finishedAt": "2026-10-06T09:26:35.999Z",
+  "outcome": "completed",
+  "cleanup": {
+    "completed": true,
+    "counts": [
+      "audit_logs=215",
+      "user_sessions=82",
+      "sessions=100",
+      "exams=1",
+      "users=100"
+    ]
+  }
+}

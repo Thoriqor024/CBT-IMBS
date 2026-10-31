@@ -1,0 +1,10 @@
+{
+    "recommendations": [
+        "ms-playwright.playwright",
+        "ms-azuretools.vscode-containers",
+        "ms-vscode.powershell",
+        "ollama.ollama",
+        "openai.chatgpt",
+        "continue.continue"
+    ]
+}

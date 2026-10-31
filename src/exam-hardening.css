@@ -1,0 +1,48 @@
+.portal-user button,.portal-error button{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.portal-error button{margin-left:auto;border:0;background:transparent;color:#9d4e48;font-weight:700}
+.portal-section-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}.portal-section-heading h2{margin:0}.portal-section-heading button{display:flex;align-items:center;gap:5px;padding:7px 9px;border:1px solid #e3e9e5;border-radius:7px;background:white;color:#617168;font-size:10px;cursor:pointer}.portal-section-heading button:disabled{opacity:.5}
+.portal-exam{flex-wrap:wrap}
+.exam-preflight-backdrop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:18px;background:#14241fd4;backdrop-filter:blur(5px)}
+.exam-preflight{position:relative;width:min(470px,100%);padding:26px;border:1px solid #e3ebe6;border-radius:16px;background:white;box-shadow:0 20px 70px #0b20164a;color:#344357}
+.exam-preflight-close{position:absolute;top:12px;right:14px;border:0;background:transparent;color:#829087;font-size:24px;cursor:pointer}
+.preflight-icon{width:44px;height:44px;display:grid;place-items:center;margin-bottom:12px;border-radius:12px;background:#eaf5ef;color:#37845f}
+.exam-preflight h2{margin:0 0 6px;font-size:21px}.exam-preflight>p{margin:0 0 19px;color:#839087;font-size:12px}
+.preflight-pin{display:grid;gap:7px;margin-bottom:14px;color:#526259;font-size:11px;font-weight:700}
+.preflight-pin input{width:100%;height:46px;border:1px solid #dfe8e2;border-radius:8px;padding:8px 12px;text-align:center;letter-spacing:8px;font:700 20px 'DM Sans',sans-serif;color:#2e7453;direction:ltr}
+.preflight-screen{display:flex;align-items:flex-start;gap:10px;margin:12px 0;padding:12px;border:1px solid #d9eae0;border-radius:9px;background:#f1f8f3;color:#397653;font-size:11px;line-height:1.65}
+.preflight-screen svg{flex:none;margin-top:1px}.preflight-screen.is-blocked{border-color:#f0d1cc;background:#fff2f0;color:#ad4e47}.preflight-screen.is-unknown{border-color:#ecdcb7;background:#fff9eb;color:#9a752f}
+.preflight-override{display:flex;align-items:flex-start;gap:8px;margin:12px 0;color:#80672e;font-size:11px;line-height:1.6}.preflight-override input{margin-top:2px}
+.preflight-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:18px}.preflight-actions>.secondary,.preflight-actions>.portal-start{min-height:38px;cursor:pointer}
+.preflight-actions>.portal-start:disabled{cursor:not-allowed;opacity:.5}
+.exam-security-overlay{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px;text-align:center;background:#14221feF;color:white;backdrop-filter:blur(9px)}
+.exam-security-overlay h2{margin:15px 0 6px;font-size:24px}.exam-security-overlay p{max-width:460px;color:#d1ddd7;font-size:14px;line-height:1.8}.exam-security-overlay button{margin-top:12px;padding:11px 17px;border:0;border-radius:8px;background:#43a476;color:white;font:600 14px inherit;cursor:pointer}
+.fullscreen-shield{background:#10251fed}
+.exam-watermark{position:fixed;z-index:10;top:43%;left:-12%;width:124%;transform:rotate(-20deg);pointer-events:none;text-align:center;opacity:.075;color:#162c23;font:700 clamp(19px,4vw,42px) 'DM Sans',sans-serif;letter-spacing:2px;white-space:nowrap}
+.exam-question-card h1,.answer-options{user-select:none;-webkit-user-select:none}
+.exam-top{position:relative;z-index:1}.exam-body{position:relative;z-index:1}
+.exam-net,.exam-top .autosave-state{display:flex;align-items:center;gap:6px}
+.exam-security-overlay button{font:inherit;font-size:14px;font-weight:600}
+.monitor-presence{display:flex;align-items:center;gap:4px;margin-top:4px;font:600 9px 'DM Sans',sans-serif}
+.monitor-presence.online{color:#3f9468}.monitor-presence.offline{color:#b38335}
+.exam-pin-panel{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;margin-bottom:16px;padding:13px 14px;border:1px solid #dcebe1;border-radius:10px;background:#f4faf6}
+.exam-pin-panel>div{display:grid;gap:4px}.exam-pin-panel b{color:#355b45;font-size:12px}.exam-pin-panel small{color:#71847a;font-size:10px;line-height:1.5}
+.exam-pin-panel .pin-validity{display:grid;grid-template-columns:auto minmax(90px,110px);align-items:center;gap:8px;color:#52695c;font-size:11px}
+.exam-pin-panel .pin-validity input{width:100%;min-height:34px;padding:7px 9px;border:1px solid #cbd9cf;border-radius:6px;background:#fff;color:#263d30;font:inherit}
+.exam-pin-panel button{white-space:nowrap}.exam-pin-panel output{grid-column:1/-1;padding:12px;text-align:center;border:1px dashed #8fc3a2;border-radius:8px;background:white;color:#26764f;font:700 30px 'DM Sans',sans-serif;letter-spacing:9px;direction:ltr}
+.exam-pin-panel p{grid-column:1/-1;margin:0;color:#a44942;font-size:11px}
+@media(max-width:760px){
+  .exam-preflight{padding:21px 17px}.exam-preflight h2{font-size:18px}.preflight-actions{flex-direction:column-reverse}.preflight-actions>*{justify-content:center}
+  .portal-exam{align-items:flex-start}.portal-exam .portal-start{margin-left:51px}.exam-top .autosave-state{font-size:0}.exam-top .autosave-state svg{width:15px;height:15px}
+  .exam-security-overlay h2{font-size:20px}.exam-security-overlay p{font-size:12px}.exam-watermark{top:45%;left:-40%;width:180%;font-size:20px}
+  .exam-pin-panel{grid-template-columns:1fr}.exam-pin-panel button{justify-content:center}.exam-pin-panel output{font-size:25px}
+}
+
+
+.exam-violation-backdrop{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:20px;background:#25190bc9;backdrop-filter:blur(5px)}
+.exam-violation-dialog{width:min(500px,100%);padding:26px;border:1px solid #f5d18a;border-radius:16px;background:#fffaf0;color:#483318;text-align:center;box-shadow:0 24px 90px #0006}
+.exam-violation-dialog>svg{color:#d08022}
+.exam-violation-dialog h2{margin:12px 0 8px;font-size:21px}
+.exam-violation-dialog p{margin:0 auto;max-width:420px;color:#715a36;font-size:14px;line-height:1.7}
+.exam-violation-dialog button{margin-top:18px;padding:10px 18px;border:0;border-radius:8px;background:#a35f16;color:#fff;font:inherit;font-weight:700;cursor:pointer}
+@media(max-width:600px){.exam-violation-dialog{padding:21px}.exam-violation-dialog h2{font-size:18px}.exam-violation-dialog p{font-size:12px}}
+.exam-violation-backdrop{z-index:60}.exam-violation-dialog>small{display:block;margin-top:18px;color:#8a6f45;font-size:12px;font-weight:700}

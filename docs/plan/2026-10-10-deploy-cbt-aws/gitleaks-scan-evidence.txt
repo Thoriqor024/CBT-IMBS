@@ -1,0 +1,14 @@
+Gitleaks version: 8.30.1
+Official release: https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1
+Official checksum asset: https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_checksums.txt
+Verified Gitleaks release archive SHA-256: d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e
+Gitleaks executable SHA-256: 17157e2ee8b76fc8b1d8bee607a250e34b8a8023c8bc81822d4b5ee4d78fcb7c
+Archive: C:\Users\User\AppData\Local\Temp\cbt-imbs-aws-source-20261010T155240271.zip
+Clean extraction scanned: C:\Users\User\AppData\Local\Temp\cbt-imbs-aws-source-20261010T155240271.zip.extracted
+Invocation: gitleaks detect --source "C:\Users\User\AppData\Local\Temp\cbt-imbs-aws-source-20261010T155240271.zip.extracted" --no-git --redact=100 --report-format json --report-path "E:\CBT IMBS\docs\plan\2026-10-10-deploy-cbt-aws\gitleaks-report-redacted.json"
+Exit status: 0
+Redaction: 100 percent; report contains no secret values.
+Redacted report: E:\CBT IMBS\docs\plan\2026-10-10-deploy-cbt-aws\gitleaks-report-redacted.json
+Archive SHA-256: a15b85e077d3d1e09d91abcc6d5cedae2228981ec01e4803bb8e2c34b274f5d2
+Manifest: E:\CBT IMBS\docs\plan\2026-10-10-deploy-cbt-aws\source-manifest.tsv
+Archived file count: 61

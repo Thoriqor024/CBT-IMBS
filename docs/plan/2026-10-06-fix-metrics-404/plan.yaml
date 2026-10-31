@@ -1,0 +1,177 @@
+plan_id: 2026-10-06-fix-metrics-404
+status: completed
+tldr: |
+  Diagnose the live /metrics 404 without changing the current Compose topology, then
+  make only a route-level correction if source evidence requires it. Verify valid,
+  non-blocking Prometheus exposition and sanitized failures; if the source is already
+  correct but the running API is stale, report the exact API-only rebuild command.
+created_at: "2026-10-06"
+created_by: gem-planner
+revision: 2
+replan_count: 0
+planner_revision_used: true
+
+tasks:
+  - id: diagnose-metrics-404
+    title: Confirm the active metrics route and deployment cause
+    description: >-
+      [reuse current Express app, prom-client registry, and Compose services; read-only]
+      Trace GET /metrics from the active Express app registration through the final
+      middleware and compare it with any already-running API container. Inspect
+      docker-compose.yml and only the necessary non-sensitive topology fields from
+      resolved `docker compose config`; redact secrets and environment values. Never
+      print, save, or relay the full resolved config. Do this without starting,
+      stopping, rebuilding, or recreating services. If the stack is already running,
+      verify the route over the existing Compose network and capture status,
+      Content-Type, and representative exposition output; otherwise mark runtime
+      behavior unverified. Distinguish source/route defects from a stale container or
+      scrape configuration mismatch. Do not mutate database state or edit Compose.
+    wave: 1
+    depends_on: []
+    agent: gem-debugger
+    status: completed
+    retries_used: 0
+    acceptance_criteria:
+      - >-
+        Evidence identifies whether GET /metrics is registered on the same Express app
+        passed to app.listen, its order relative to the central error handler and any
+        fallthrough behavior, and whether an already-running API returns 404.
+      - >-
+        Current Compose topology is recorded: API port 3000 is not host-published,
+        Nginx returns 404 for public /metrics, and no Compose change or service
+        lifecycle operation is performed.
+      - >-
+        Runtime checks, when available, verify HTTP status, registry content type, and
+        valid metric exposition from the existing network. If services are not already
+        running or reachable, this is reported as unverified rather than inferred.
+      - >-
+        Report that repository prometheus.yml names api:3000 as its scrape target but
+        is not mounted by the current Prometheus service; keep this scrape-config issue
+        distinct from the API route 404 and do not modify Compose without authorization.
+    handoff:
+      constraints:
+        - Do not start, stop, restart, rebuild, or recreate any container or service.
+        - Do not modify docker-compose.yml, prometheus.yml, persistent volumes, or database data.
+        - Keep checks on the existing private Compose network; do not expose port 3000 publicly.
+        - Inspect only necessary non-sensitive topology fields from resolved Compose config; redact secrets and environment values, and never print, save, or relay the full config.
+      relevant_context:
+        - >-
+          server/index.js creates one `app`, registers observability middleware and
+          `app.get('/metrics', observability.metricsHandler)` near the top, adds the
+          central `createErrorHandler()` near the end, then listens with that same app.
+        - >-
+          server/observability.js creates a prom-client Registry, collects default
+          metrics, sets Content-Type from registry.contentType, awaits registry.metrics(),
+          and ends the response; metric failures currently call next(error).
+        - >-
+          package.json declares prom-client ^15.1.3 and package-lock.json resolves
+          prom-client 15.1.3. server/observability.test.js already tests exposition,
+          content type, and exclusion of the scrape itself.
+        - >-
+          Current docker-compose.yml has no `ports` on `api`; the frontend publishes
+          8080/8443 and nginx.conf explicitly returns 404 at the public /metrics path.
+          Prometheus publishes 9090, but its service does not mount ./prometheus.yml.
+      high_risk_signals:
+        - api_change
+        - security_sensitive
+        - shared_state
+      critic_signals: []
+
+  - id: repair-and-validate-metrics-route
+    title: Ensure /metrics returns safe Prometheus exposition
+    description: >-
+      [reuse current Express route, custom prom-client Registry, and node:test]
+      Based on diagnosis, make the smallest route-level change needed so GET /metrics
+      is active on the listening Express app before relevant fallthrough handlers. Keep
+      the supplied handler shape: set Content-Type from register.contentType, await
+      register.metrics(), and end the response with that text. Catch asynchronous
+      failures locally or through an equivalent safe path, return a generic 500 without
+      exposing Error objects/details, and log only a fixed safe message if logging is
+      retained. Preserve the private Compose/network boundary and existing metric
+      instrumentation. Use any existing compression/content-negotiation behavior;
+      exposition remains text and must not receive an incorrect Content-Encoding. Do
+      not add dependencies or change Compose unless a necessary topology change is
+      explicitly authorized. If source behavior is already correct and only the
+      running container is stale, avoid unnecessary source edits and report the API-only
+      rebuild/recreate command `docker compose up -d --build --no-deps api`; do not run it.
+    wave: 2
+    depends_on:
+      - diagnose-metrics-404
+    status: completed
+    status: completed
+    retries_used: 0
+    authorization: >-
+      User instructed the agent to work autonomously after being informed that an
+      API-only rebuild may briefly interrupt CBT traffic. Run only the bounded API
+      rebuild/recreate; do not touch the database or volumes.
+    execution_result: >-
+      `docker compose up -d --build --no-deps api` succeeded and recreated only the
+      API container. Health returned HTTP 200 with database connected; /metrics
+      returned 200 and Content-Type text/plain; version=0.0.4; charset=utf-8 for
+      ordinary and Prometheus Accept headers. Prometheus target api:3000/metrics is
+      UP without error. Public frontend /metrics remains a separate running-Nginx
+      mismatch and was not changed.
+    diagnosis_handoff: >-
+      The API returned 404 with text/html; Prometheus target api:3000/metrics is
+      correctly loaded and down with the same 404. No source edit is needed based on
+      current repository code. Recommended command only, not run:
+      docker compose up -d --build --no-deps api. Current frontend /metrics returned
+      200 HTML because its running Nginx config differs from checked-in nginx.conf;
+      this is separate from the Prometheus-to-API 404.
+    acceptance_criteria:
+      - >-
+        GET /metrics is registered on the active listening app before relevant 404 or
+        fallthrough handlers, returns 200 and valid prom-client exposition, and uses
+        register.contentType with both ordinary curl and Prometheus text Accept headers.
+      - >-
+        The handler awaits registry.metrics() and ends the response with its returned
+        text. An injected/reproducible async registry failure yields a generic 500;
+        response content and any log message do not expose internal Error details.
+      - >-
+        Compression behavior matches existing middleware/configuration: no compression
+        dependency is added, no incorrect Content-Encoding is sent, and text exposition
+        is returned correctly when compression is not configured.
+      - >-
+        Existing counters, labels, registry collectors, and /metrics self-scrape
+        exclusion continue to pass focused tests. No unrelated metrics or API behavior
+        is changed.
+      - >-
+        `npm test`, `npm run build`, Node syntax checks for changed server files, and
+        non-destructive `docker compose config` validation pass. Inspect only necessary
+        non-sensitive topology fields, redact secrets and environment values, and never
+        print, save, or relay the full resolved config. Report unavailable checks and
+        runtime verification limitations with evidence.
+      - >-
+        docker-compose.yml is preserved unless a topology edit proves necessary and is
+        authorized; API port 3000 remains private. If the source route is already
+        correct but the live container is stale, report exactly
+        `docker compose up -d --build --no-deps api` as the API-only rebuild/recreate
+        needed, but do not execute it or bring services down.
+    handoff:
+      constraints:
+        - Preserve current docker-compose.yml changes and do not publish API port 3000.
+        - Do not run service-down, volume deletion, database cleanup, or container recreation commands.
+        - Keep changes limited to server/index.js, server/observability.js, and focused existing tests as needed.
+        - Do not add compression dependencies or expose metrics through Nginx.
+        - Inspect only necessary non-sensitive topology fields from resolved Compose config; redact secrets and environment values, and never print, save, or relay the full config.
+      relevant_context:
+        - >-
+          Existing test helper and metrics assertions are in server/observability.test.js;
+          extend them for negotiated text exposition and sanitized async failure rather
+          than adding a separate test framework or production-only route.
+        - >-
+          The current Express app has no explicit app-level 404 handler; unmatched
+          requests fall through after registered routes. Central error handling is
+          installed after application routes and currently logs raw Error objects.
+        - >-
+          No compression middleware is present in the inspected API setup; nginx.conf
+          proxies only /api/ and is not the Prometheus transport path.
+        - >-
+          If live verification cannot be done without changing service state, rely on
+          focused route tests and report the safe API-only rebuild command without
+          executing it.
+      high_risk_signals:
+        - api_change
+        - security_sensitive
+        - shared_state
+      critic_signals: []

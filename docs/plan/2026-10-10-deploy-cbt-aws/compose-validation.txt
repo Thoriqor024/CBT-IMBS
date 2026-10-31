@@ -1,0 +1,13 @@
+AWS Compose validation: PASS
+Command: docker compose -f deploy/aws/compose.yaml config --format json
+Validation used validation-only placeholder values; no containers were started.
+Published host mappings: caddy 80:80, caddy 443:443
+No host ports: db, api, frontend, prometheus
+Independent named volumes: cbt-imbs-aws-pgdata, cbt-imbs-aws-uploads, cbt-imbs-aws-caddy-data, cbt-imbs-aws-caddy-config
+
+LAN configuration SHA-256 values match the pre-edit baseline:
+docker-compose.yml E7DAAB3CDE7D15E2366AC922FDF4600009B14DD6250A7431666445D3728C632D
+nginx.conf F06566776D79538E25DCD02B8EC5E53DCFF373E1B2528A6638948AB651E23DB0
+.env.example 3E619102244F602DF199FED5A7B1517EAF25E14C3268D7487235E0FC0456BCEE
+
+No .env contents were read. No artifact was transferred and no EC2 resource was touched.

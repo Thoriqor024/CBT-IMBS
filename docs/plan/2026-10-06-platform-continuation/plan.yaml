@@ -1,0 +1,190 @@
+plan_id: 2026-10-06-platform-continuation
+status: completed
+tldr: |
+  Continue the selected Profile B (supervised in-room BYOD) workflow by adding a short,
+  Admin-controlled PIN validity window, then verify the full supervised-room flow and
+  measure the existing 150-participant target on the local Docker deployment. Keep
+  browser signals review-only and make no kiosk, location-proof, or production-readiness
+  claims.
+created_at: "2026-10-06"
+created_by: gem-planner
+revision: 1
+replan_count: 1
+planner_revision_used: false
+
+tasks:
+  - id: pin-lifecycle
+    title: Add an expiring supervised-room exam PIN workflow
+    description: >-
+      [reuse existing API, PostgreSQL, and Admin monitor flow] Extend the current
+      hashed, one-time-displayed PIN so an Admin chooses a positive whole-minute
+      validity window at issuance. Persist and return only its issue/expiry metadata,
+      enforce expiry with server/database time on first student start, and make PIN
+      reissue invalidate the prior PIN with an auditable actor, timestamp, and expiry.
+      Show the active PIN expiry in the Admin monitor; never persist or re-display the
+      raw PIN. Keep already-started sessions resumable without another PIN, retain
+      existing start-attempt limiting, and keep browser signals pending until Admin
+      review. Record the implementation and updated operational status in update.md
+      and pengembangan.md; do not create a README.
+    wave: 1
+    depends_on: []
+    agent: gem-implementer
+    status: completed
+    status: completed
+    acceptance_criteria:
+      - Admin must provide a positive whole-minute validity duration to issue a PIN for an active exam; invalid durations are rejected.
+      - The database stores an expiry timestamp, and first-start requests are accepted only before that timestamp using server-side time; expired and superseded PINs are rejected.
+      - Reissuing a PIN invalidates the previous PIN and records the Admin, issuance/rotation time, and expiry in the audit trail; the raw PIN is returned only once.
+      - The Admin monitor shows whether the PIN is available and its expiry; students with an in-progress session can resume without re-entering a PIN.
+      - Existing Profile B review behavior remains intact: client signals alone do not increment confirmed violations or lock a session; only authorized Admin review does so.
+      - Database changes are additive and preserve existing sessions; implementation progress and operational limits are recorded in update.md and pengembangan.md.
+      - npm build and Node syntax checks for changed server files pass.
+    handoff:
+      constraints:
+        - Treat Profile B as supervised in-room BYOD; a PIN is an access hurdle, not proof of location.
+        - Do not provision OS kiosk, use external administration, or claim browser controls prevent OS-level actions.
+        - Preserve existing database rows and additive migration style; retain the current Admin-only PIN issuance and audit model.
+        - Follow the repository rule to record every implementation milestone in update.md and do not add README files.
+      relevant_context:
+        - pengembangan.md says PIN has no automatic expiry and recommends a short validity window, start window, audited rotation, and attempt limiting; Profile B shares the PIN immediately before the exam.
+        - server/index.js POST /api/exams/:id/pin currently stores entry_pin_hash and entry_pin_updated_at, while POST /api/student/exams/:examId/start checks only the hash and active exam status.
+        - src/App.jsx releaseExamPin and the exam-pin-panel expose Admin issuance; Monitor.jsx already renders event review, presence, and reset controls.
+        - server/db.js owns additive PostgreSQL schema migrations; package.json currently has build/dev/api scripts and no test script.
+        - update.md 5 October entry confirms review-only browser signals, audited review/recovery, and per-session option shuffle are implemented; local smoke test passed, but browser and load checks remain open.
+      high_risk_signals: []
+      critic_signals: []
+
+  - id: profile-b-e2e
+    title: Verify the Profile B participant and supervisor journey
+    description: >-
+      [reuse local Docker deployment and available browser MCP; no installation needed]
+      Use the three currently shared browser pages at https://localhost:8443/ and direct
+      Playwright or Chrome DevTools MCP interactions, rather than another silent
+      browser-tester invocation. First verify the app is the local Docker stack and
+      identify an isolated synthetic Admin/exam/participant fixture. Record its exact
+      IDs and a unique test marker before mutation. Exercise PIN issuance/rotation,
+      valid and expired entry, participant resume, presence, pending signal review,
+      false-positive dismissal, confirmed review, audited session recovery, and
+      disconnect/reconnect. Verify student/API data boundaries and role/ownership checks.
+      Remove only the recorded synthetic records and verify cleanup; if the environment
+      or targeted cleanup cannot be established safely, stop before destructive actions
+      and leave this task blocked with evidence. Record browser/version and unsupported
+      device coverage. Do not install tools unless a concrete missing dependency prevents
+      the available browser MCP approach.
+    wave: 2
+    depends_on:
+      - pin-lifecycle
+    agent: gem-implementer
+    status: completed
+    retries_used: 0
+    acceptance_criteria:
+      - A local browser/API run demonstrates that a current PIN starts a not-started participant before expiry, while expired and rotated PINs fail and an active session resumes without a PIN.
+      - The supervisor can observe participant presence, review a pending signal with a reason, dismiss a false positive, confirm a signal, and recover an eligible session with an audited reason.
+      - Disconnect/reconnect or an offline event does not increment confirmed violations or automatically lock a participant; answer state resumes according to the existing synchronization workflow.
+      - API responses do not expose the PIN hash or answer keys to student routes, and role/ownership checks reject unauthorized cross-participant actions in the exercised cases.
+      - The run records browser/version and results; Chrome is tested locally, Edge is included if available, and ChromeOS hardware is explicitly marked untested when unavailable.
+      - Relevant checks pass: npm build, node --check server/index.js, node --check server/db.js, docker compose config, and Docker health endpoint; synthetic records are removed afterward.
+      - Before any mutation, the run confirms the local target, isolates and records synthetic fixture IDs, and confirms a targeted cleanup path; cleanup is verified without truncating tables, deleting persistent volumes, or touching pre-existing records.
+    handoff:
+      constraints:
+        - Use only the local Docker environment and synthetic records; do not touch real student data or perform school/device administration.
+        - Do not interpret a successful fullscreen or display check as evidence of kiosk or anti-cheat guarantees.
+        - Use the already-shared local browser pages and available direct browser MCP tools; do not retry the prior no-output browser-tester route or install tools absent a concrete blocker.
+        - If safe fixture isolation or exact-scope cleanup cannot be verified, stop before destructive actions, preserve all data, and report the task blocked with evidence.
+      relevant_context:
+        - pengembangan.md Profile B specifies in-room supervision, immediate PIN sharing, randomized per-student questions/options, human review of browser signals, and the scenario checklist for expired/rotated PIN, reconnect, review, and recovery.
+        - update.md 5 October records an API smoke test for PIN start, option shuffle, review, and recovery, while explicitly leaving browser validation open.
+        - src/StudentPortal.jsx handles PIN start, online/offline state, encrypted drafts, heartbeat, and review-only signal submission; src/Monitor.jsx surfaces presence and event review.
+        - Docker is reported open by the user; docker-compose.yml targets the local frontend/API/PostgreSQL stack.
+        - Three shared pages are available at https://localhost:8443/; the browser session provides a direct verification route.
+        - No code review has occurred; runtime verification must not be presented as an independent code review.
+      high_risk_signals: []
+      critic_signals: []
+
+  - id: capacity-150
+    title: Measure the 150-participant local capacity target
+    description: >-
+      [platform/stdlib before new dependencies] Use or add a repeatable local load
+      harness with Node.js built-in APIs to exercise staged 10-, 50-, and 150-session
+      login/start, heartbeat, answer-save, reconnect, submit, and monitor-poll traffic
+      against the Docker stack. Use isolated synthetic accounts/exams and deterministic
+      cleanup. Capture latency percentiles, errors/429s, PostgreSQL pool pressure, and
+      API/database CPU and memory. Report measurements and failure evidence without
+      declaring production readiness until the school sets performance acceptance
+      thresholds and validates the target devices.
+    wave: 3
+    depends_on:
+      - profile-b-e2e
+    agent: gem-devops
+    status: completed
+    retries_used: 0
+    acceptance_criteria:
+      - A repeatable local procedure exercises 10, 50, and 150 synthetic participants through the specified session lifecycle without using real student accounts.
+      - The report records p50/p95/p99 latency, success/error/429 counts, API and database CPU/memory, connection-pool pressure, monitor polling latency, and any response or answer inconsistencies.
+      - Test-created users, exams, sessions, and responses are deterministically removed, with persistent volumes and pre-existing records preserved.
+      - Results are reported as a measured baseline; no pass/go claim is made without thresholds agreed by the school, and no kiosk/device compatibility is inferred from the load run.
+      - Repeatable load-run instructions and outcome are recorded in update.md; no additional external service or infrastructure is required.
+    handoff:
+      constraints:
+        - Run against the local Docker deployment only and preserve its existing persistent data.
+        - Prefer Node.js built-in fetch/timers over a new dependency unless repository evidence proves the standard library insufficient.
+        - Treat 150 as a test target, not an established capacity guarantee; document any threshold or hardware limitations.
+      relevant_context:
+        - blueprint.md targets 150 students in one session and says that capacity must be load-tested.
+        - pengembangan.md stage 4 requires staged 10/50/150 load, session lifecycle traffic, latency/error/pool/resource metrics, and says acceptance thresholds must be agreed with the owner before declaring readiness.
+        - server/db.js configures DB_POOL_MAX with default 50; the documentation explicitly warns pool size alone is not capacity evidence.
+        - package.json has no load-test or test framework script, so a minimal Node built-in harness is the lowest-dependency starting point.
+      high_risk_signals: []
+      critic_signals: []
+
+baseline:
+  objective: >-
+    Read blueprint.md, update.md, and pengembangan.md; use the 5 Oct 2026 Profile B
+    choice and latest unfinished notes to strengthen platform features/workflows
+    consistently with existing style.
+  acceptance_criteria:
+    - Latest docs and selected Profile B are authoritative.
+    - Implement in-scope incomplete work.
+    - Preserve conventions.
+    - Validate relevant changes.
+  captured_at: "2026-10-06"
+
+decisions:
+  - Preserve pin-lifecycle as completed; its existing implementation and checks are not reopened.
+  - Reassign profile-b-e2e to gem-implementer and use direct browser MCP against the three shared https://localhost:8443/ pages, avoiding the prior silent browser-tester invocation.
+  - Profile-b-e2e verification and exact synthetic-record cleanup are complete; capacity-150 completed as a local measured baseline with no production-readiness claim.
+  - Use available browser tooling; do not download or install tools unless execution establishes a concrete missing dependency.
+
+assumptions:
+  - The shared browser pages still target the local Docker deployment and can be inspected by the assigned executor.
+  - Existing app/API/Admin workflows can create isolated synthetic fixtures; if exact-scope cleanup is not safely available, the executor stops before destructive cleanup and reports blocked.
+
+replan:
+  reason: >-
+    The saved task statuses did not match the supplied current state: wave 2 had no
+    evidence after three no-output attempts, and wave 3 had not started. Shared browser
+    pages now provide a direct verification route.
+  changed_tasks: [profile-b-e2e, capacity-150]
+  added_tasks: []
+  removed_tasks: []
+  preserved_acceptance_criteria:
+    - Latest docs and selected Profile B are authoritative.
+    - Implement in-scope incomplete work.
+    - Preserve conventions.
+    - Validate relevant changes.
+  new_risks: []
+  progress_signal: >-
+    pin-lifecycle, profile-b-e2e, and capacity-150 are completed. The 150-participant
+    local run completed with 1,260 successful lifecycle requests; start p95 was 26.68 s,
+    monitor-poll p95 was 14.24 s, and the observed 50-connection pool limit was reached.
+    Exact fixture cleanup preserved baseline rows and persistent volumes. This is not a
+    production-readiness claim; pool waiting count and host hardware specs were unavailable.
+  revised_tasks: [profile-b-e2e, capacity-150]
+  invalidated_tasks: []
+  invalidated_assumptions: []
+handoff_notes:
+  - >-
+    Independent task review returned warning/proceed with all five capacity acceptance
+    criteria met and no blockers. Monitor latency uses eight polls per cohort, so tail
+    percentiles are weak estimates; resource samples were 1/4/11 per stage and host
+    specifications were not recorded. Keep the result as a local baseline only.

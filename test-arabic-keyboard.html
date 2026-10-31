@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Arabic Keyboard Test</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Amiri', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: #f4f6f9;
+    padding: 40px;
+    direction: rtl;
+  }
+  .arabic-keyboard {
+    margin: 6px 0 15px;
+    padding: 10px;
+    border: 1px solid #dfe7e4;
+    border-radius: 9px;
+    background: #f7faf8;
+    max-width: 700px;
+  }
+  .keyboard-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: #63766c;
+    font-size: 10px;
+    margin-bottom: 7px;
+  }
+  .keyboard-head button {
+    border: 0;
+    background: none;
+    color: #89958e;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .keyboard-row {
+    display: flex;
+    justify-content: center;
+    gap: 5px;
+    margin-top: 5px;
+    direction: ltr;
+    flex-wrap: wrap;
+  }
+  .keyboard-row button {
+    min-width: 34px;
+    height: 34px;
+    border: 1px solid #dfe6e2;
+    border-radius: 6px;
+    background: white;
+    color: #445849;
+    font: 15px 'Amiri', serif;
+    box-shadow: 0 1px 1px #172b1b0b;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .keyboard-row button:active {
+    background: #e8f0ec;
+  }
+  .keyboard-row .space-key {
+    min-width: 100px;
+    font: 10px 'DM Sans', sans-serif;
+  }
+  h1 {
+    font-family: 'Amiri', serif;
+    color: #26364b;
+    margin-bottom: 20px;
+    text-align: right;
+  }
+  .note {
+    color: #63766c;
+    font-size: 12px;
+    margin-top: 20px;
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+  <h1>لوحة المفاتيح العربية - Arabic Keyboard Layout</h1>
+  <div class="arabic-keyboard">
+    <div class="keyboard-head">
+      <b>لوحة المفاتيح العربية</b>
+      <button>Tampilkan</button>
+    </div>
+    <div class="keyboard-row">
+      <button>ض</button><button>۱</button><button>۲</button><button>۳</button><button>۴</button><button>۵</button><button>۶</button><button>۷</button><button>۸</button><button>۹</button><button>۰</button><button>.</button><button>(</button><button>)</button><button>-</button><button>=</button>
+    </div>
+    <div class="keyboard-row">
+      <button></button><button>ض</button><button>ص</button><button>ث</button><button>ق</button><button>ف</button><button>غ</button><button>ع</button><button>ه</button><button>خ</button><button>ح</button><button>ج</button><button>د</button><button>1</button><button>2</button>
+    </div>
+    <div class="keyboard-row">
+      <button></button><button>ش</button><button>س</button><button>ي</button><button>ب</button><button>ل</button><button>ا</button><button>ت</button><button>ن</button><button>م</button><button>ك</button><button>ط</button><button>3</button><button>4</button><button>5</button>
+    </div>
+    <div class="keyboard-row">
+      <button>ئ</button><button>ء</button><button>آ</button><button>أ</button><button>إ</button><button>ة</button><button>و</button><button>ز</button><button>ظ</button><button>6</button><button>7</button><button>8</button><button>9</button>
+    </div>
+    <div class="keyboard-row">
+      <button>;</button><button>=</button><button class="space-key">مسافة</button><button>-</button><button>?</button><button>!</button><button>.</button><button>،</button><button>0</button>
+    </div>
+  </div>
+  <p class="note">Tata letak keyboard pop-up Arab sesuai dengan gambar referensi yang diberikan.</p>
+</body>
+</html>

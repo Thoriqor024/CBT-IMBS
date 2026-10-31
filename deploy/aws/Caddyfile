@@ -1,0 +1,8 @@
+{$AWS_HOSTNAME} {
+  encode zstd gzip
+  reverse_proxy frontend:80
+}
+
+:80 {
+  redir https://{$AWS_HOSTNAME}{uri} permanent
+}

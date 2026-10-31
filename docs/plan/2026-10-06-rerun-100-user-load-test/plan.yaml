@@ -1,0 +1,156 @@
+plan_id: 2026-10-06-rerun-100-user-load-test
+status: pending
+tldr: |
+  Recover only the failed run's identifiable synthetic records, correct the 100-user
+  harness to isolate a run-marker class and create users before the exam, then rerun
+  locally with captured metrics, exact cleanup, and unconditional production restore.
+created_at: "2026-10-06"
+created_by: gem-planner
+revision: 1
+replan_count: 1
+planner_revision_used: false
+
+tasks:
+  - id: reconcile-failed-fixtures
+    title: Reconcile and remove failed-run leftovers
+    description: >-
+      [reuse existing PostgreSQL state and recorded execution evidence] Inventory the
+      failed run's synthetic users, exam 25, and its sessions; establish exact user IDs
+      from the run window and database evidence before mutation. Remove only those
+      exact synthetic records and exam 25 with its dependent records. If the 100 user
+      IDs cannot be distinguished confidently from the 400 pre-existing LOAD-100 users,
+      stop without deleting and report the ambiguity. Preserve persistent volumes and
+      all non-target records.
+    wave: 1
+    depends_on: []
+    agent: gem-devops
+    status: completed
+    retries_used: 0
+    acceptance_criteria:
+      - A before/after inventory accounts for the failed run's 100 synthetic users, exam 25, and 400 sessions and identifies the exact records selected for removal.
+      - Only confirmed failed-run IDs are removed; the 400 pre-existing LOAD-100 users and unrelated records remain, and persistent volumes are unchanged.
+      - Cleanup is verified by querying the exact IDs and reconciling relevant table counts; if exact scope is uncertain, no deletion occurs and the task is reported blocked.
+    handoff:
+      constraints:
+        - Never use broad class-based deletes, truncate tables, remove Docker volumes, or delete records not proven to belong to this failed run.
+        - Stop before mutation if exact IDs or dependent-record scope cannot be established.
+      relevant_context:
+        - update.md records baseline 400 LOAD-100 users, failed-run exam ID 25, and 400 exam sessions left not_started; no cleanup was performed.
+        - The failed harness created the exam before the 100 new users and did not emit an ID manifest.
+      high_risk_signals: []
+      critic_signals: []
+
+  - id: repair-load-harness
+    title: Isolate fixtures and guarantee harness cleanup
+    description: >-
+      [reuse Node.js built-ins and existing harness] Update scripts/load100-test.mjs
+      to create the 100 synthetic users before creating the exam, use a unique run
+      marker in the class and fixture names, persist exact created IDs immediately to
+      a run manifest, and clean only manifest-listed records in a finally path after
+      success or failure. Keep the 100-user simultaneous login/start/save/submit
+      scenario and client latency/status summary. Do not change production rate-limit
+      behavior or add dependencies.
+    wave: 2
+    depends_on:
+      - reconcile-failed-fixtures
+    agent: gem-implementer
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - Fixture creation order is users first, then exam; the exam's session set contains exactly the 100 run-marker users and no pre-existing class members.
+      - Each created user, exam, and dependent fixture ID is written to a run-specific manifest before later mutating steps; class and fixture names cannot collide with earlier runs.
+      - A controlled abort after fixture creation and a normal completion both clean only manifest-listed synthetic records; unrelated records and volumes remain intact.
+      - node --check scripts/load100-test.mjs passes and the harness reports request counts, HTTP status/error counts, and p50/p95/p99 latency by phase.
+    handoff:
+      constraints:
+        - Keep fixture cleanup exact-ID only; do not delete by the shared LOAD-100 class.
+        - Never persist credentials beyond the run evidence needed for cleanup; manifest should contain IDs and run marker, not passwords or session cookies.
+        - Preserve the existing test-local-only rate-limit bypass contract.
+      relevant_context:
+        - scripts/load100-test.mjs currently creates and activates the exam before createStudentSet, hardcodes className LOAD-100, and has no manifest or cleanup path.
+        - server/index.js and docker-compose.yml gate the login bypass on NODE_ENV=development plus LOCAL_LOAD_TEST_MODE=true; Compose defaults remain production and false.
+      high_risk_signals: []
+      critic_signals: []
+
+  - id: rerun-and-record-100
+    title: Rerun and record the valid 100-user benchmark
+    description: >-
+      [reuse local Docker stack, existing harness, and Prometheus] Confirm the local
+      Compose target and health, enable the explicit test-local bypass only for this
+      run, and restrict ingress to loopback if it is otherwise exposed. Execute the
+      simultaneous 100-user lifecycle; capture harness output and relevant API,
+      database-pool, and resource metrics. In unconditional cleanup/finalization,
+      remove only manifest-listed fixtures, restore NODE_ENV=production and
+      LOCAL_LOAD_TEST_MODE=false plus the original port binding, then verify API
+      health 200 with database connected. Record outcome and limitations in update.md.
+    wave: 3
+    depends_on:
+      - repair-load-harness
+    agent: gem-devops
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - Preflight verifies the intended local Compose stack, healthy database/API, unique run marker, and a clean fixture baseline before enabling test mode.
+      - The run starts exactly 100 marker-class sessions and captures full process output, per-phase success/error/429 counts, client p50/p95/p99 latency, and available API/database-pool/resource metrics.
+      - Success and failure paths both remove only manifest-listed synthetic records and restore production/false environment values and the original ingress binding.
+      - Post-run /api/health returns HTTP 200 with database connected; the 100 test users, test exam, sessions, and responses are absent, while persistent volumes and unrelated records remain.
+      - update.md receives a titled, timestamped result with plan correlation, scenario, captured metrics, cleanup verification, and an explicit non-readiness caveat if no agreed acceptance thresholds exist.
+    handoff:
+      constraints:
+        - Run only against the local Docker deployment; do not change production application behavior or touch real student records.
+        - Restore production settings regardless of benchmark or cleanup outcome; report any failed restore/health gate immediately without claiming a valid benchmark.
+        - Preserve Docker persistent volumes and do not broaden cleanup to recover from a failed run.
+      relevant_context:
+        - update.md records the prior run's API health 200 and production/false mode after recovery, but 100 synthetic users, exam 25, and its 400 sessions remained.
+        - The objective is a valid 100-user simultaneous CBT load test with metrics, synthetic-only cleanup, and results recorded in update.md; production readiness is not implied.
+      high_risk_signals: []
+      critic_signals: []
+
+baseline:
+  objective: >-
+    Run a valid 100-user simultaneous CBT load test, capture metrics, clean only
+    synthetic records, and record results in update.md.
+  acceptance_criteria:
+    - The 100-user cohort is valid and isolated from pre-existing students.
+    - Benchmark metrics and execution outcome are captured and recorded in update.md.
+    - Only exact synthetic records are cleaned; persistent volumes and existing data remain intact.
+    - Local bypass is temporary, production configuration is restored regardless of outcome, and health is verified afterward.
+  captured_at: "2026-10-06"
+
+decisions:
+  - Replan only the affected 100-user load-test sequence; completed unrelated platform work remains out of scope.
+  - Use a unique per-run marker class and create the cohort before creating the exam so generated sessions belong only to the 100 synthetic users.
+  - Record exact fixture IDs and clean by manifest; never use broad class or table deletion.
+  - Keep LOCAL_LOAD_TEST_MODE=true limited to the explicit local run and restore NODE_ENV=production and LOCAL_LOAD_TEST_MODE=false in all outcomes.
+  - If prior synthetic users cannot be distinguished exactly from the 400 pre-existing users, preserve them and block cleanup rather than widen scope.
+
+assumptions:
+  - The failed-run execution window and PostgreSQL audit/state can identify the exact 100 created user IDs; otherwise task reconcile-failed-fixtures will stop without mutation.
+  - The local Docker stack and Prometheus are available for the rerun; missing metrics are recorded as unavailable rather than inferred.
+
+replan:
+  reason: >-
+    The previous 100-user run was invalid because the fixed LOAD-100 class already
+    contained 400 students. Exam creation generated sessions for those existing users
+    before the new cohort was created, producing 400 unrelated not_started sessions
+    and a 404 start failure. The harness emitted no exact-ID manifest or cleanup, so
+    synthetic users and exam 25 remain despite production settings and health being
+    restored.
+  changed_tasks: [reconcile-failed-fixtures, repair-load-harness, rerun-and-record-100]
+  added_tasks: [reconcile-failed-fixtures, repair-load-harness, rerun-and-record-100]
+  removed_tasks: []
+  preserved_acceptance_criteria:
+    - Run a valid simultaneous 100-user CBT load test and capture benchmark metrics.
+    - Clean only synthetic test records and preserve persistent volumes and pre-existing data.
+    - Restore production configuration and verify health regardless of run outcome.
+    - Record timestamped results and limitations in update.md.
+  new_risks: []
+  progress_signal: >-
+    Previous attempt is invalidated; API production mode and health were recovered,
+    but exact cleanup and a valid cohort benchmark remain incomplete.
+  revised_tasks: [reconcile-failed-fixtures, repair-load-harness, rerun-and-record-100]
+  invalidated_tasks: [prior-100-user-benchmark]
+  invalidated_assumptions:
+    - The fixed LOAD-100 class is isolated for test use.
+    - Creating the exam before the new users yields sessions for the new cohort.
+    - The prior harness output is sufficient to identify and clean its fixtures.

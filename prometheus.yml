@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 5s # Mengambil metrik setiap 5 detik sekali sesuai log panduan
+
+scrape_configs:
+  - job_name: 'cbt-imbs-api-metrics'
+    static_configs:
+      # Mengarah ke nama service API dan port internal di dalam jaringan Compose
+      - targets: ['api:3000'] 

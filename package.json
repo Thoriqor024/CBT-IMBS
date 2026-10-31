@@ -1,0 +1,38 @@
+{
+  "name": "cbt-imbs",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "api": "node server/index.js",
+    "bootstrap:platform-owner": "node server/bootstrap-platform-owner.js",
+    "bootstrap:control-plane-owner": "node server/bootstrap-control-plane-owner.js",
+    "setup:local-control-plane": "node scripts/setup-local-control-plane.mjs",
+    "init:control-plane": "node server/initialize-control-plane.js",
+    "secrets:ensure": "node scripts/ensure-tenant-secrets.mjs",
+    "verify:control-plane": "node scripts/verify-control-plane.mjs",
+    "validate:tenant-env": "node scripts/validate-tenant-env.mjs",
+    "test": "node --test server/complexMcScoring.test.js server/accountProfile.test.js server/subjectValidation.test.js server/itemAnalysis.test.js server/userIdentity.test.js server/tenantQuota.test.js server/tenantDatabaseRouter.test.js server/tenantRegistry.test.js server/tenantDatabaseContext.test.js server/tenantRuntime.test.js server/controlPlaneRuntime.test.js server/platformAuthentication.test.js server/tenantProvisioner.test.js server/platformManagement.test.js server/platformOwnerBootstrap.test.js server/observability.test.js server/question-content.test.js server/imageSecurity.test.js server/teacherAccess.test.js server/seedAccounts.test.js src/questionImportFormat.test.js src/studentImportFormat.test.js src/tenantDiscovery.test.js src/resultsExport.test.js src/itemAnalysisExport.test.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "bcryptjs": "^3.0.3",
+    "connect-pg-simple": "^10.0.0",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "express-session": "^1.19.0",
+    "fflate": "^0.8.3",
+    "katex": "0.19.0",
+    "lucide-react": "^0.468.0",
+    "multer": "2.4.0",
+    "pg": "^8.23.0",
+    "prom-client": "^15.1.3",
+    "react": "latest",
+    "react-dom": "latest",
+    "read-excel-file": "^9.3.10",
+    "vite": "latest"
+  }
+}

@@ -1,0 +1,101 @@
+name: cbt-imbs-aws
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: cbt_imbs
+      POSTGRES_USER: cbt
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in the EC2 runtime environment}
+    volumes:
+      - aws-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cbt -d cbt_imbs"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../..
+      dockerfile: server/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: cbt_imbs
+      DB_USER: cbt
+      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD in the EC2 runtime environment}
+      DB_POOL_MAX: ${DB_POOL_MAX:-70}
+      DB_CONNECTION_TIMEOUT_MS: ${DB_CONNECTION_TIMEOUT_MS:-5000}
+      DB_QUERY_TIMEOUT_MS: ${DB_QUERY_TIMEOUT_MS:-5000}
+      QUESTION_MEDIA_DIR: /app/uploads/question-media
+      QUESTION_MEDIA_MAX_TOTAL_BYTES: ${QUESTION_MEDIA_MAX_TOTAL_BYTES:-1073741824}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in the EC2 runtime environment}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?Set SEED_ADMIN_PASSWORD in the EC2 runtime environment}
+      SEED_TEACHER_PASSWORD: ${SEED_TEACHER_PASSWORD:?Set SEED_TEACHER_PASSWORD in the EC2 runtime environment}
+      ROTATE_DEMO_SEED_PASSWORDS: "true"
+      SEED_DEMO_STUDENTS: "false"
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to the AWS nip.io HTTPS origin}
+      CORS_ORIGINS: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to the AWS nip.io HTTPS origin}
+      COOKIE_SECURE: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - aws-uploads:/app/uploads
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 4s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ../..
+      dockerfile: deploy/aws/Dockerfile.frontend
+      args:
+        VITE_API_BASE_URL: ""
+        VITE_SHOW_DEMO_ACCOUNTS: "false"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      AWS_HOSTNAME: ${AWS_HOSTNAME:?Set AWS_HOSTNAME to the instance's nip.io hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - aws-caddy-data:/data
+      - aws-caddy-config:/config
+    depends_on:
+      - frontend
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ../../prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  aws-pgdata:
+    name: cbt-imbs-aws-pgdata
+  aws-uploads:
+    name: cbt-imbs-aws-uploads
+  aws-caddy-data:
+    name: cbt-imbs-aws-caddy-data
+  aws-caddy-config:
+    name: cbt-imbs-aws-caddy-config

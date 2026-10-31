@@ -1,0 +1,862 @@
+================================================================================
+      PANDUAN PENGGUNAAN PLATFORM CBT IMBS — SISTEM UJIAN TERINTEGRASI
+================================================================================
+Versi dokumen : Oktober 2026
+Tujuan        : Referensi operasional lengkap untuk semua role pengguna
+Bahasa        : Indonesia (istilah teknis dalam bahasa sistem)
+================================================================================
+
+
+════════════════════════════════════════════════════════════════════════════════
+                          GAMBARAN UMUM PLATFORM
+════════════════════════════════════════════════════════════════════════════════
+
+Platform CBT IMBS (Computer Based Test — Integrated Management and Base System)
+adalah sistem ujian berbasis web yang dirancang untuk kebutuhan sekolah. Platform
+memiliki tiga level akses (role):
+
+  ┌─────────────┬──────────────────────────────────────────────────────────────┐
+  │ ROLE        │ KEWENANGAN UTAMA                                             │
+  ├─────────────┼──────────────────────────────────────────────────────────────┤
+  │ Admin       │ Kendali penuh: siswa, bank soal, ujian, monitor, pengaturan  │
+  │ Guru        │ Pantau ujian, hasil, nilai essay, dan bank sesuai scope admin  │
+  │ Siswa       │ Mengerjakan ujian yang ditugaskan sesuai jadwal              │
+  └─────────────┴──────────────────────────────────────────────────────────────┘
+
+Akun demo bawaan (hanya untuk pengembangan — ganti sebelum produksi):
+  • Admin   : username=admin      | kata sandi=admin123
+  • Guru    : username=guru       | kata sandi=guru123
+  • Siswa   : username=IMBS-24001 | kata sandi=ujian123
+
+
+════════════════════════════════════════════════════════════════════════════════
+                        BAGIAN 1 — LOGIN & LOGOUT
+════════════════════════════════════════════════════════════════════════════════
+
+1.1  MASUK KE SISTEM
+─────────────────────
+  1. Buka browser dan akses URL platform (misal: http://localhost:3000 untuk
+     lokal, atau URL sekolah jika di server LAN/cloud).
+  2. Halaman login akan muncul dengan logo IMBS CBT.
+  3. Masukkan username dan kata sandi sesuai role Anda.
+  4. Klik tombol "Masuk ke dashboard".
+  5. Sistem akan langsung mengarahkan ke tampilan sesuai role:
+       • Admin/Guru → Dashboard pengelolaan
+       • Siswa      → Portal siswa (daftar ujian)
+
+  Catatan keamanan:
+  • Maksimal 10 percobaan login gagal per akun per 15 menit (proteksi brute force).
+  • Maksimal 300 percobaan dari satu alamat IP per 15 menit.
+  • Sesi login bertahan 8 jam sejak login terakhir.
+
+1.2  KELUAR DARI SISTEM
+────────────────────────
+  • Klik ikon "Keluar" (LogOut) di pojok kiri bawah sidebar (Admin/Guru)
+    atau tombol "Keluar" di pojok kanan atas portal siswa.
+  • Semua data sesi dihapus dari browser dengan aman.
+
+
+════════════════════════════════════════════════════════════════════════════════
+                    BAGIAN 2 — PERAN ADMIN: PANDUAN LENGKAP
+════════════════════════════════════════════════════════════════════════════════
+
+Admin adalah pengelola utama platform. Setelah login, Admin melihat dashboard
+dengan sidebar navigasi di sisi kiri yang memuat menu:
+  • Ringkasan
+  • Bank Soal
+  • Siswa
+  • Ujian
+  • Pantau Ujian
+  • Hasil Ujian
+  • Pengaturan
+
+──────────────────────────────────────────────────────────────────────────────
+2.1  HALAMAN RINGKASAN (DASHBOARD)
+──────────────────────────────────────────────────────────────────────────────
+Tampilan pertama setelah login. Menampilkan:
+
+  STATISTIK KARTU (4 kartu angka cepat):
+  ┌──────────────────┬──────────────────┬──────────────────┬──────────────────┐
+  │ Total Siswa      │ Bank Soal        │ Ujian Aktif/     │ Rata-rata Nilai  │
+  │ Akun aktif       │ Per mapel        │ Terjadwal        │ Ujian terkoreksi │
+  └──────────────────┴──────────────────┴──────────────────┴──────────────────┘
+  → Klik kartu untuk masuk ke halaman terkait.
+
+  PANEL SESI UJIAN:
+  • Menampilkan satu ujian yang paling relevan (aktif atau terbaru).
+  • Informasi: judul, kelas, mata pelajaran, topik, durasi.
+  • Progress bar: menunjukkan berapa siswa mengerjakan vs. total peserta.
+  • Indikator: jumlah mengerjakan, belum mulai, dan pelanggaran.
+  • Tombol pantau (ikon mata) untuk langsung membuka monitor ujian.
+
+  PANEL AKSES CEPAT:
+  • Tambah siswa → membuka form tambah siswa baru
+  • Import siswa → membuka dialog import CSV/Excel
+  • Atur ujian   → membuka form buat rancangan ujian
+  • Buat bank soal → membuka editor bank soal
+
+  PANEL SISWA TERBARU & BANK SOAL TERBARU:
+  • 4 siswa terbaru ditampilkan ringkas (nama, username, kelas).
+  • 4 bank soal terbaru dengan indikator jumlah soal per mapel.
+
+  Tombol "Perbarui" → menyegarkan semua data dari server secara manual.
+
+──────────────────────────────────────────────────────────────────────────────
+2.2  HALAMAN SISWA — KELOLA AKUN PESERTA UJIAN
+──────────────────────────────────────────────────────────────────────────────
+Hanya Admin yang dapat mengakses halaman ini.
+
+  A. TAMBAH SISWA SATU PER SATU
+  ──────────────────────────────
+  1. Klik tombol "+ Tambah siswa".
+  2. Isi formulir:
+       • Nama lengkap siswa (wajib, contoh: Ahmad Fadhil)
+       • Kelas          (pilih dari dropdown kelas yang tersedia)
+  3. Klik "Buat akun siswa".
+  4. Sistem akan menghasilkan:
+       • Username unik dengan format IMBS-XXXXX (dihasilkan server)
+       • Token akses awal (kata sandi sementara, 12 karakter acak)
+  5. Dialog "Kredensial siswa" muncul menampilkan username dan token.
+
+  ⚠  PENTING: Token hanya ditampilkan SATU KALI. Segera:
+       - Catat/screenshot token, ATAU
+       - Klik "Unduh kredensial CSV" untuk menyimpan ke file.
+  Setelah dialog ditutup, token tidak dapat dilihat lagi.
+
+  B. IMPORT SISWA MASSAL (CSV/Excel)
+  ─────────────────────────────────
+  1. Klik tombol "Import data".
+  2. Siapkan file CSV atau Excel dengan format:
+       Kolom wajib: "nama siswa" dan "kelas"
+       Baris pertama: header kolom
+       Contoh:
+         nama siswa,kelas
+         Ahmad Fadhil,VII A
+         Siti Rahayu,VII B
+  3. Klik "Pilih file" dan pilih file .csv atau .xlsx.
+  4. Batas: maksimal 500 siswa per proses import.
+  5. Setelah selesai, dialog Kredensial muncul dengan semua token.
+  6. Segera unduh file CSV kredensial (tombol "Unduh kredensial CSV").
+
+  Template Excel (.xlsx) berisi header "nama siswa" dan "kelas" pada dua kolom
+  terpisah. Unduh melalui tombol "Template Excel" pada halaman Siswa. File CSV
+  lama tetap dapat diimpor.
+
+  C. MENCARI SISWA
+  ─────────────────
+  Gunakan kolom pencarian di atas tabel untuk mencari berdasarkan:
+  • Nama siswa
+  • Username
+  • Kelas
+  Pencarian berlaku real-time tanpa perlu menekan Enter.
+
+  D. HAPUS SISWA
+  ──────────────
+  Klik ikon tempat sampah (🗑) di baris siswa, konfirmasi dialog.
+  Catatan: hapus siswa akan menghapus akun, bukan data ujian/sesi.
+
+    E. TAMBAH GURU
+    ──────────────
+    1. Buka Pengelolaan → Akun guru pada sidebar, lalu klik "+ Tambah guru".
+    2. Isi nama lengkap, username akses, dan password awal (minimal 8 karakter).
+    3. Pilih sedikitnya satu kelas dan satu mata pelajaran.
+    4. Klik "Buat akun guru". Username akses ditampilkan pada notifikasi; berikan
+      username dan password awal secara aman kepada guru.
+    5. Jika memilih beberapa kelas dan mata pelajaran, akses berlaku untuk semua
+      kombinasi kelas–mata pelajaran yang dipilih.
+    6. Guru hanya melihat ujian, hasil, siswa, dan bank soal dalam cakupan tersebut.
+      Hak akses divalidasi server dan tindakan pemantauan/penilaian dicatat di audit.
+    7. Daftar akun pada halaman Akun guru menampilkan akses saat ini. Gunakan
+       "Atur akses" untuk menetapkan/mengubah kelas dan mapel guru lama tanpa
+       mengganti username atau password.
+
+──────────────────────────────────────────────────────────────────────────────
+2.3  HALAMAN BANK SOAL — KELOLA SOAL UJIAN
+──────────────────────────────────────────────────────────────────────────────
+Bank soal adalah kumpulan pertanyaan terorganisir per mata pelajaran dan kelas.
+
+  A. BUAT BANK SOAL BARU
+  ───────────────────────
+  1. Klik "+ Buat bank soal".
+  2. Isi formulir Bank:
+       • Mata pelajaran: pilih dari daftar (dapat tambah baru dengan
+         "+" Mata pelajaran jika belum ada)
+       • Tingkat kelas : pilih dari tingkat yang tersedia (VII, VIII, IX)
+       • Topik/materi  : nama topik (contoh: "الفصل الدراسي الأول")
+  3. Tentukan jumlah soal:
+       • Jumlah soal PG (Pilihan Ganda)
+       • Jumlah soal Essay
+       Form soal otomatis dibuat sesuai jumlah yang dimasukkan.
+  4. Isi setiap soal:
+       ── Soal Pilihan Ganda:
+          - Pertanyaan (mendukung teks Arab otomatis / dir="auto")
+          - Opsi A, B, C, D (wajib semua terisi)
+          - Pilih kunci jawaban: A, B, C, atau D
+          - Bobot nilai (default: 1 poin)
+       ── Soal Essay:
+          - Pertanyaan
+          - Rubrik / panduan koreksi (untuk guru saat menilai)
+          - Bobot nilai
+  5. Klik "Simpan bank & soal".
+  6. Sistem memvalidasi seluruh soal, lalu menyimpan ke database.
+
+  BATAS SOAL: 1 sampai 1.000 soal per bank.
+
+  B. TAMBAH MATA PELAJARAN BARU
+  ──────────────────────────────
+  Klik "+ Mata pelajaran" di samping tombol "Buat bank soal".
+  Masukkan nama mata pelajaran di dialog popup, klik OK.
+
+  C. LIHAT DAN TAMBAH SOAL KE BANK YANG ADA
+  ──────────────────────────────────────────
+  1. Klik "Lihat soal →" pada kartu bank soal.
+  2. Dialog menampilkan semua soal dalam bank tersebut.
+  3. Klik "Tambah soal" untuk menambah butir soal baru ke bank yang sudah ada.
+  4. Isi formulir soal (sama seperti saat buat bank baru), klik "Simpan soal".
+
+  D. HAPUS BANK SOAL
+  ───────────────────
+  1. Klik tombol "Hapus" di kartu bank soal (hanya Admin).
+  2. Dialog konfirmasi menampilkan dampak penghapusan:
+       - Jumlah soal, ujian, sesi, jawaban, dan log pelanggaran yang ikut terhapus.
+  3. Bank tidak dapat dihapus jika ada ujian AKTIF atau sesi yang masih berjalan.
+
+  E. MENCARI BANK SOAL
+  ─────────────────────
+  Gunakan kolom pencarian untuk filter berdasarkan mata pelajaran atau topik.
+
+──────────────────────────────────────────────────────────────────────────────
+2.4  HALAMAN UJIAN — MEMBUAT DAN MENGELOLA SESI UJIAN
+──────────────────────────────────────────────────────────────────────────────
+  A. BUAT RANCANGAN UJIAN
+  ────────────────────────
+  1. Klik "+ Buat ujian" (atau dari Dashboard klik "Buat ujian").
+  2. Isi formulir:
+       • Nama ujian       : judul deskriptif (contoh: "Ujian Harian Bab 1")
+       • Bank soal        : pilih bank soal yang akan digunakan
+       • Kelas peserta    : kelas yang akan mengikuti ujian
+       • Jumlah PG        : berapa soal pilihan ganda diambil dari bank
+       • Jumlah Essay     : berapa soal essay diambil dari bank
+       • Durasi (menit)   : batas waktu mengerjakan (1–480 menit)
+  3. Klik "Buat rancangan ujian".
+
+  Apa yang terjadi di server saat rancangan dibuat:
+  → Sistem mengambil soal acak dari bank sesuai kuota PG dan essay.
+  → Untuk SETIAP siswa di kelas terpilih dibuat sesi ujian tersendiri.
+  → Urutan soal diacak berbeda-beda per siswa (soal yang sama, urutan beda).
+  → Opsi jawaban PG juga diacak per siswa (anti-contek).
+  → Status ujian dimulai sebagai "draft".
+
+  CATATAN: Stok soal di bank harus ≥ jumlah soal yang diminta.
+
+  B. MENGATUR STATUS UJIAN
+  ─────────────────────────
+  Setiap ujian memiliki siklus status berikut:
+
+    draft → scheduled → active → completed
+
+    • draft     : Rancangan baru, siswa belum bisa mengakses.
+    • scheduled : Dijadwalkan, siswa belum bisa mengakses.
+    • active    : Ujian dibuka, siswa dapat masuk dengan PIN.
+    • completed : Ujian ditutup, tidak ada sesi baru yang dapat dimulai.
+
+  Cara mengubah status:
+  • Tombol ▶ (Play)  : mengaktifkan ujian (draft/scheduled → active)
+  • Tombol ⏸ (Pause) : mengakhiri ujian (active → completed)
+  (Hanya Admin yang dapat mengubah status)
+
+  C. TERBITKAN PIN MASUK UJIAN
+  ─────────────────────────────
+  PIN adalah kode 6 digit yang diperlukan siswa untuk masuk ujian.
+  PIN hanya dapat diterbitkan saat ujian berstatus "active".
+
+  Cara menerbitkan PIN:
+  1. Klik ikon mata (🔍) pada ujian untuk membuka Monitor.
+  2. Di bagian atas monitor, isi "Masa berlaku PIN (menit)" (contoh: 15).
+  3. Klik tombol "Terbitkan PIN".
+  4. PIN 6 digit muncul di layar Admin — sampaikan kepada siswa secara langsung
+     (lisan atau ditampilkan ke kelas).
+  5. PIN baru otomatis membatalkan PIN sebelumnya.
+  6. Setelah masa berlaku habis, PIN tidak dapat digunakan; terbitkan ulang.
+
+  PENTING: PIN hanya sebagai penghalang akses ujian, bukan verifikasi lokasi.
+  Pengawas tetap perlu memastikan siswa hadir secara fisik.
+
+  D. HAPUS UJIAN
+  ──────────────
+  1. Klik ikon 🗑 pada ujian.
+  2. Dialog konfirmasi menampilkan jumlah sesi, jawaban, dan log yang ikut terhapus.
+  3. Ujian dengan status "active" atau yang memiliki peserta yang sedang
+     mengerjakan TIDAK DAPAT dihapus.
+
+──────────────────────────────────────────────────────────────────────────────
+2.5  HALAMAN PANTAU UJIAN — PENGAWASAN REAL-TIME
+──────────────────────────────────────────────────────────────────────────────
+Halaman ini menampilkan semua peserta yang sedang ujian, terkunci, atau memiliki
+riwayat pelanggaran — di SEMUA ujian sekaligus (tanpa perlu memilih ujian).
+
+  PANEL PER SISWA menampilkan:
+  • Nama, username, kelas
+  • Status: SEDANG UJIAN / MENUNGGU KEPUTUSAN / PERINGATAN / DIBLOKIR / SELESAI
+  • Indikator Online/Offline: hijau (aktif dalam 35 detik terakhir), merah (terputus)
+  • Skor akhir (jika sudah ada)
+  • Jumlah sinyal pelanggaran dan statusnya
+
+  KODE WARNA STATUS:
+  • Abu-abu  = sedang mengerjakan, tidak ada pelanggaran
+  • Kuning   = ada pelanggaran atau sedang menunggu keputusan Admin
+  • Merah    = diblokir (terkunci)
+  • Hijau    = selesai tanpa pelanggaran
+
+  FITUR TINDAKAN ADMIN (dari panel monitor):
+
+  A. CATAT PELANGGARAN MANUAL
+  ────────────────────────────
+  Digunakan saat pengawas menyaksikan pelanggaran secara langsung di ruang ujian.
+  1. Klik ikon ⚠ (CircleAlert) di baris siswa yang sedang ujian.
+  2. Masukkan catatan alasan pelanggaran.
+  3. Klik OK — pelanggaran langsung dikonfirmasi dan dicatat.
+  4. Jika ini mencapai batas pelanggaran, sesi siswa dikunci otomatis.
+
+  B. LIHAT RIWAYAT SINYAL
+  ─────────────────────────
+  1. Klik ikon jam (🕐) di baris siswa untuk membuka riwayat sinyal.
+  2. Riwayat menampilkan:
+       - Jenis sinyal (tab tersembunyi, jendela kehilangan fokus, keluar layar penuh,
+         pintasan terlarang, clipboard, menu kanan, catatan pengawas)
+       - Waktu kejadian
+       - Detail tambahan
+       - Status tinjauan: MENUNGGU TINJAUAN / DIKONFIRMASI / FALSE POSITIVE
+       - Keputusan dan alasan Admin (jika sudah ditinjau)
+
+  C. TINJAUAN SINYAL INDIVIDUAL (PER SINYAL)
+  ──────────────────────────────────────────
+  Untuk setiap sinyal berstatus "MENUNGGU TINJAUAN":
+  1. Buka riwayat sinyal siswa.
+  2. Klik "Konfirmasi" → sinyal dihitung sebagai pelanggaran nyata,
+     violation_count bertambah; jika mencapai batas, sesi dikunci.
+  3. Klik "False positive" → sinyal diabaikan, tidak menambah hitungan pelanggaran.
+  4. Masukkan alasan untuk setiap keputusan (wajib diisi, maksimal 240 karakter).
+
+  D. KEPUTUSAN BLOKIR/FALSE POSITIVE (SAAT AMBANG TERCAPAI)
+  ──────────────────────────────────────────────────────────
+  Ketika total pelanggaran (dikonfirmasi + menunggu) mencapai batas yang diatur
+  (default: 2), ujian siswa DIJEDA otomatis dan muncul panel keputusan khusus:
+
+    "Ambang dua pelanggaran tercapai."
+    → Tombol "Konfirmasi blokir"   : memblokir akses ujian siswa secara permanen.
+    → Tombol "False positive"      : membatalkan sinyal menunggu, siswa dapat lanjut.
+
+  Admin harus memberi alasan untuk setiap keputusan.
+
+  E. PULIHKAN SESI (RESET)
+  ─────────────────────────
+  Untuk siswa yang terkunci atau memiliki pelanggaran yang dapat dibersihkan:
+  1. Klik ikon ↺ (RotateCcw) di baris siswa.
+  2. Masukkan alasan pemulihan (wajib, untuk audit).
+  3. Sesi dikembalikan ke status "in_progress", hitungan pelanggaran direset ke 0,
+     semua sinyal menunggu ditandai sebagai dismissed.
+  4. Pemulihan HANYA bisa dilakukan jika:
+       - Ujian masih berstatus "active"
+       - Waktu ujian siswa belum habis
+       - Status sesi adalah "in_progress" atau "locked"
+  5. Event "Sesi dipulihkan oleh Admin" dicatat dengan alasan dan waktu.
+
+  PEMBARUAN OTOMATIS: data monitor diperbarui setiap 5 detik secara otomatis.
+
+──────────────────────────────────────────────────────────────────────────────
+2.6  HALAMAN HASIL UJIAN
+──────────────────────────────────────────────────────────────────────────────
+Menampilkan semua siswa yang telah menyelesaikan ujian (status: completed/locked).
+
+  Informasi per siswa:
+  • Nama, username, kelas, judul ujian
+  • Status: SELESAI atau TERKUNCI
+  • Jumlah PG benar, salah, tidak dijawab
+  • Poin PG yang diperoleh vs. total poin PG
+  • Jumlah essay (dan apakah sudah semua dinilai)
+  • Hitungan pelanggaran dan ringkasan riwayat pelanggaran
+
+  Catatan penting tentang nilai:
+  • Skor PG dihitung otomatis oleh server segera setelah ujian dikumpulkan.
+  • Skor essay HARUS dinilai manual oleh Admin atau Guru (lihat 2.7).
+  • Nilai AKHIR (final_score) dimasukkan manual oleh Admin/Guru setelah semua
+    penilaian selesai.
+
+  Menambah/mengubah nilai akhir:
+  1. Temukan baris siswa di halaman Hasil Ujian.
+  2. Klik field nilai akhir dan masukkan angka (skala 0–100).
+  3. Klik simpan — nilai tercatat dan dicatat di audit log.
+
+──────────────────────────────────────────────────────────────────────────────
+2.7  KOREKSI ESSAY (ADMIN & GURU)
+──────────────────────────────────────────────────────────────────────────────
+  1. Di halaman Hasil Ujian, cari siswa yang essay-nya belum dinilai
+     (label "Essay belum semua dinilai").
+  2. Klik tombol koreksi (ikon pena/review) untuk membuka panel koreksi essay.
+  3. Panel menampilkan:
+       - Prompt pertanyaan (lengkap)
+       - Jawaban yang ditulis siswa
+       - Rubrik/panduan koreksi yang ditetapkan saat membuat soal
+  4. Masukkan nilai essay (skala 0–100) di field nilai.
+  5. Klik simpan — nilai disimpan dan dicatat di audit log.
+  6. Ulangi untuk setiap soal essay dalam sesi tersebut.
+
+──────────────────────────────────────────────────────────────────────────────
+2.8  HALAMAN PENGATURAN SEKOLAH (HANYA ADMIN)
+──────────────────────────────────────────────────────────────────────────────
+Pengaturan ini mempengaruhi seluruh platform.
+
+  OPSI PENGATURAN:
+  ┌─────────────────────────────────┬────────────────────────────────────────┐
+  │ Pengaturan                      │ Keterangan                             │
+  ├─────────────────────────────────┼────────────────────────────────────────┤
+  │ Nama sekolah                    │ Ditampilkan di sidebar dan dokumen     │
+  │ Tahun ajaran                    │ Format: YYYY/YYYY (contoh: 2026/2027)  │
+  │ Semester                        │ Pilihan: Ganjil atau Genap             │
+  │ Daftar kelas                    │ Kelas yang tersedia (maks 40 kelas)    │
+  │ Tingkat kelas                   │ Tingkat bank soal (VII, VIII, IX, dll) │
+  │ Durasi ujian bawaan (menit)     │ Nilai default saat membuat ujian baru  │
+  │ Batas pelanggaran               │ Ambang sebelum sesi dijeda (1–10)      │
+  └─────────────────────────────────┴────────────────────────────────────────┘
+
+  PEMBATASAN PENTING:
+  • Kelas tidak dapat dihapus jika masih ada siswa atau ujian yang menggunakannya.
+  • Tingkat kelas tidak dapat dihapus jika ada bank soal dengan tingkat tersebut.
+  • Batas pelanggaran tidak dapat diubah saat ada ujian aktif/terjadwal atau
+    siswa yang sedang mengerjakan.
+  • Klik "Simpan pengaturan" untuk menyimpan; "Batal" untuk mengembalikan ke
+    pengaturan sebelumnya.
+  • Setiap perubahan dicatat di audit log (sebelum dan sesudah perubahan).
+
+
+════════════════════════════════════════════════════════════════════════════════
+                   BAGIAN 3 — PERAN GURU: PANDUAN LENGKAP
+════════════════════════════════════════════════════════════════════════════════
+
+Guru memiliki akses sesuai kelas dan mata pelajaran yang ditetapkan Admin saat
+akun dibuat. Sidebar menampilkan:
+  • Ringkasan
+  • Bank Soal
+  • Ujian
+  • Pantau Ujian
+  • Hasil Ujian
+  (tanpa: Siswa, Pengaturan)
+
+──────────────────────────────────────────────────────────────────────────────
+3.1  DASHBOARD GURU
+──────────────────────────────────────────────────────────────────────────────
+Dashboard hanya menghitung data pada kelas dan mata pelajaran yang ditugaskan:
+  • Tidak ada tombol "Buat ujian" (hanya Admin yang bisa membuat ujian).
+  • Tidak ada akses cepat ke kelola siswa.
+  • Statistik tidak mencakup data di luar scope guru.
+
+──────────────────────────────────────────────────────────────────────────────
+3.2  BANK SOAL (GURU)
+──────────────────────────────────────────────────────────────────────────────
+Guru dapat mengelola bank soal hanya untuk mata pelajaran dan tingkat kelas yang
+sesuai dengan assignment Admin, KECUALI:
+  • Guru TIDAK dapat menghapus bank soal (tombol Hapus tidak muncul).
+  • Guru dapat:
+    - Membuat bank soal baru (dengan soal-soal)
+    - Melihat dan menambah soal ke bank yang ada
+    - Mengedit butir soal dan menambah rumus/gambar sebelum bank dijadwalkan
+    - Mencari/filter bank soal
+  • Guru tidak dapat menambah mata pelajaran atau membuka bank di luar scope.
+
+  Langkah-langkah sama dengan panduan Admin di bagian 2.3.
+
+──────────────────────────────────────────────────────────────────────────────
+3.3  HASIL UJIAN & KOREKSI ESSAY (GURU)
+──────────────────────────────────────────────────────────────────────────────
+Guru dapat melihat hasil, menilai essay, dan menetapkan nilai akhir hanya untuk
+ujian dengan pasangan mata pelajaran–kelas yang ditugaskan Admin.
+
+──────────────────────────────────────────────────────────────────────────────
+3.4  PANTAU UJIAN GURU
+──────────────────────────────────────────────────────────────────────────────
+Guru memiliki tindakan pemantauan yang sama dengan Admin untuk ujian dalam
+scope-nya:
+  • Melihat peserta aktif dan riwayat sinyal yang diperbarui otomatis.
+  • Mencatat pelanggaran manual, meninjau sinyal, dan memberi alasan keputusan.
+  • Memilih blokir atau false-positive saat ambang pelanggaran tercapai.
+  • Memulihkan sesi dan menerbitkan PIN ujian aktif.
+
+Semua tindakan dicatat di audit log. Guru tidak dapat mengubah status umum ujian,
+membuat jadwal ujian, mengelola siswa, atau mengubah pengaturan sekolah.
+
+Semua tindakan penilaian dicatat di audit log dengan identitas guru.
+
+
+════════════════════════════════════════════════════════════════════════════════
+                  BAGIAN 4 — PERAN SISWA: PANDUAN LENGKAP
+════════════════════════════════════════════════════════════════════════════════
+
+Siswa mengakses platform melalui URL yang sama dengan Admin/Guru.
+Setelah login, siswa langsung diarahkan ke PORTAL SISWA (bukan dashboard pengelolaan).
+
+──────────────────────────────────────────────────────────────────────────────
+4.1  PORTAL SISWA — HALAMAN UTAMA
+──────────────────────────────────────────────────────────────────────────────
+  Halaman menampilkan:
+  • Salam dalam bahasa Arab di bagian atas
+  • Nama siswa yang sedang login
+  • Daftar semua ujian yang ditugaskan untuk siswa tersebut
+
+  STATUS UJIAN di daftar:
+  ┌─────────────────────────────────┬────────────────────────────────────────┐
+  │ Status                          │ Artinya                                │
+  ├─────────────────────────────────┼────────────────────────────────────────┤
+  │ TERSEDIA / مُتَاحٌ الآن            │ Ujian aktif, PIN tersedia, bisa masuk  │
+  │ Menunggu jadwal                 │ Ujian belum diaktifkan Admin           │
+  │ Menunggu PIN dari pengawas      │ Ujian aktif tapi PIN belum diterbitkan │
+  │ SEDANG DIKERJAKAN / جَارٍ الآن    │ Siswa sudah memulai, bisa dilanjutkan  │
+  │ SELESAI / اِكْتَمَلَ                │ Ujian sudah dikumpulkan                │
+  │ TERKUNCI / تَرْكِيْزُ               │ Akses diblokir akibat pelanggaran      │
+  └─────────────────────────────────┴────────────────────────────────────────┘
+
+  Tombol "Perbarui" untuk menyegarkan daftar ujian.
+
+──────────────────────────────────────────────────────────────────────────────
+4.2  MEMULAI UJIAN BARU
+──────────────────────────────────────────────────────────────────────────────
+  Prasyarat: Ujian harus berstatus ACTIVE dan PIN sudah diterbitkan pengawas.
+
+  LANGKAH-LANGKAH:
+  1. Klik tombol "Masukkan PIN" pada ujian yang tersedia.
+  2. Dialog PERSIAPAN UJIAN muncul menampilkan:
+       - Judul ujian dan durasi
+       - Form PIN
+       - Status pemeriksaan perangkat
+  3. Masukkan PIN 6 digit dari pengawas di field "PIN dari pengawas".
+  4. Klik "Periksa perangkat & mulai".
+  5. Browser meminta izin untuk:
+       - Mode layar penuh (Fullscreen) — izinkan
+       - Akses informasi layar (Screen Details API) — izinkan jika muncul
+  6. Sistem memeriksa:
+       a. Apakah ada lebih dari 1 layar/monitor yang terhubung
+          → Jika ya: ujian diblokir, cabut monitor/proyektor kedua dulu
+          → Jika browser tidak mendukung pemeriksaan layar: muncul opsi
+            "Pengawas sudah memeriksa perangkat hanya memakai satu layar"
+            (pengawas harus mencentang dan mengkonfirmasi secara fisik)
+       b. Apakah layar penuh berhasil diaktifkan
+          → Jika gagal: muncul pesan, coba lagi setelah mengizinkan
+  7. PIN divalidasi server (jika salah atau kedaluwarsa, muncul pesan error).
+  8. Jika semua lulus, halaman ujian dimuat.
+
+──────────────────────────────────────────────────────────────────────────────
+4.3  MELANJUTKAN UJIAN YANG SUDAH DIMULAI
+──────────────────────────────────────────────────────────────────────────────
+  Jika siswa sudah pernah memulai ujian dan sesinya belum selesai:
+  1. Klik "Lanjutkan" di baris ujian yang statusnya "SEDANG DIKERJAKAN".
+  2. Dialog persiapan muncul TANPA field PIN (tidak perlu memasukkan PIN lagi).
+  3. Klik "Lanjutkan ujian" → ujian dimuat kembali lengkap dengan jawaban yang
+     sudah disimpan sebelumnya (termasuk jawaban yang tersimpan secara lokal
+     saat offline).
+
+──────────────────────────────────────────────────────────────────────────────
+4.4  HALAMAN UJIAN — FITUR DAN CARA MENJAWAB
+──────────────────────────────────────────────────────────────────────────────
+Setelah ujian dimulai, tampilan terdiri dari:
+
+  HEADER ATAS:
+  • Nama ujian dan nama siswa
+  • Indikator jaringan (Online 🟢 / Offline 🔴)
+  • Status simpan jawaban (tersinkron / tersimpan lokal / menyimpan...)
+  • Timer hitung mundur (format MM:SS, merah jika < 5 menit)
+
+  SIDEBAR KIRI:
+  • Peta soal: tombol nomor untuk setiap soal
+    - Nomor aktif     = soal yang sedang dilihat (warna biru)
+    - Nomor terjawab  = soal yang sudah dijawab (warna hijau)
+    - Nomor kosong    = belum dijawab
+  • Counter "X dari Y soal terjawab"
+  • Identitas peserta (nama dan username)
+  • Tombol "Kumpulkan ujian"
+
+  AREA SOAL (TENGAH):
+  • Breadcrumb: mata pelajaran > Soal X dari Y
+  • Tipe dan bobot soal
+  • Teks pertanyaan (otomatis kanan-ke-kiri untuk teks Arab)
+
+  Cara menjawab SOAL PILIHAN GANDA:
+  • Klik salah satu pilihan (A, B, C, D)
+  • Jawaban langsung tersimpan (centang hijau muncul pada pilihan yang dipilih)
+  • Untuk mengubah: klik pilihan lain
+
+  Cara menjawab SOAL ESSAY:
+  • Ketik jawaban di area teks
+  • Mendukung teks Arab (otomatis kanan-ke-kiri)
+  • Papan ketik Arab virtual: klik "Tampilkan" untuk membuka keyboard Arab
+    virtual di bawah soal, klik huruf untuk menyisipkan ke posisi kursor
+  • Jawaban disimpan otomatis setiap kali berhenti mengetik (jeda 140ms)
+
+  NAVIGASI ANTAR SOAL:
+  • Klik nomor soal di sidebar, ATAU
+  • Klik "Sebelumnya" / "Berikutnya" di bawah soal
+
+──────────────────────────────────────────────────────────────────────────────
+4.5  SISTEM SIMPAN JAWABAN DAN SINKRONISASI
+──────────────────────────────────────────────────────────────────────────────
+CBT IMBS menggunakan sistem penyimpanan dua tahap untuk keandalan maksimal:
+
+  TAHAP 1 — SIMPAN LOKAL (TERENKRIPSI):
+  • Setiap jawaban disimpan ke IndexedDB/localStorage terenkripsi di perangkat
+    siswa dalam ~140ms setelah perubahan terakhir.
+  • Terjadi TANPA perlu internet — aman saat koneksi putus.
+
+  TAHAP 2 — SINKRONISASI KE SERVER:
+  • 600ms setelah jawaban tersimpan lokal, sistem mencoba mengirim ke server.
+  • Semua jawaban yang belum tersinkron (dirty drafts) dikirim berurutan.
+  • Status bar di atas menampilkan kemajuan sinkronisasi.
+
+  KETIKA INTERNET TERPUTUS:
+  • Indikator berubah ke "Offline · tersimpan lokal" (oranye/kuning)
+  • Banner peringatan muncul: "Koneksi terputus. Jawaban tetap disimpan
+    terenkripsi pada perangkat ini dan akan dikirim setelah koneksi pulih."
+  • Siswa TETAP BISA menjawab soal — jawaban tersimpan lokal.
+  • TIDAK ADA pelanggaran yang dicatat untuk koneksi terputus.
+
+  KETIKA KONEKSI PULIH:
+  • Sinkronisasi otomatis dimulai segera setelah jaringan kembali.
+  • Semua jawaban yang tertunda dikirim ke server.
+  • Status bar kembali ke "Semua jawaban tersinkron".
+
+  HEARTBEAT (DETAK JANTUNG SESI):
+  • Setiap 5 detik, sistem mengirim sinyal ke server untuk memperbarui
+    kehadiran online siswa di panel monitor pengawas.
+  • Heartbeat juga menyinkronkan jam antara perangkat siswa dan server
+    untuk akurasi timer.
+
+──────────────────────────────────────────────────────────────────────────────
+4.6  SISTEM ANTI-KECURANGAN
+──────────────────────────────────────────────────────────────────────────────
+Platform memiliki sistem pendeteksian otomatis yang berjalan di latar belakang:
+
+  SINYAL YANG DIDETEKSI OTOMATIS:
+  ┌─────────────────────────┬──────────────────────────────────────────────────┐
+  │ Kode Sinyal             │ Kondisi yang Memicunya                          │
+  ├─────────────────────────┼──────────────────────────────────────────────────┤
+  │ tab_hidden              │ Tab ujian disembunyikan (pindah tab/minimize)   │
+  │ window_blur             │ Jendela browser kehilangan fokus (alt+tab, dll) │
+  │ fullscreen_exit         │ Keluar dari mode layar penuh                    │
+  │ blocked_shortcut        │ Mencoba tekan Ctrl+T/N/W, F5, F12, dll         │
+  │ clipboard               │ Mencoba menyalin, memotong, atau menempel       │
+  │ context_menu            │ Klik kanan di halaman ujian                     │
+  └─────────────────────────┴──────────────────────────────────────────────────┘
+
+  Pintasan yang diblokir: Ctrl+T, Ctrl+N, Ctrl+W, Ctrl+R, Ctrl+P, Ctrl+S,
+  Ctrl+U, Ctrl+H, Ctrl+J, Ctrl+L, Ctrl+K, Ctrl+F, Ctrl+Shift+I/J/C/N/M/P,
+  F5, F11, F12, Alt+ArrowLeft, Alt+ArrowRight, dan lainnya.
+
+  CATATAN PENTING:
+  • Sinyal dikirim ke server dan masuk status "MENUNGGU TINJAUAN".
+  • Sinyal bukan keputusan otomatis — Admin harus meninjau dan memutuskan.
+  • Sistem mendeteksi duplikasi sinyal (blur + hidden dalam <2.5 detik hanya
+    dihitung satu kali di server) untuk mengurangi false positive.
+  • Saat offline, sinyal TIDAK dikirim (tidak ada pelanggaran untuk gangguan
+    jaringan).
+
+  LAYAR KEDUA TERDETEKSI:
+  • Jika ada monitor/proyektor kedua terdeteksi, overlay merah muncul
+    menutupi seluruh soal.
+  • Ujian tidak bisa dilanjutkan sampai monitor kedua dicabut.
+
+  KELUAR DARI LAYAR PENUH:
+  • Overlay peringatan muncul menutupi soal.
+  • Tombol "Kembali ke layar penuh" tersedia.
+  • Sinyal fullscreen_exit dikirim ke server (ditinjau Admin).
+
+  WATERMARK:
+  • Nama dan username siswa ditampilkan sebagai watermark transparan di
+    seluruh area soal (untuk pencegahan foto soal).
+
+  ANTI-COPY:
+  • Teks soal tidak dapat diseleksi atau disalin.
+
+──────────────────────────────────────────────────────────────────────────────
+4.7  SISTEM PELANGGARAN DAN DAMPAKNYA BAGI SISWA
+──────────────────────────────────────────────────────────────────────────────
+  Ketika jumlah sinyal yang dikonfirmasi + menunggu mencapai ambang (default: 2):
+
+  1. Ujian DIJEDA otomatis.
+  2. Overlay dialog muncul: "Ujian dijeda untuk peninjauan Admin".
+  3. Siswa tidak dapat menjawab soal atau mengumpulkan ujian.
+  4. Siswa menunggu keputusan Admin:
+       • Jika Admin memilih "False positive" → ujian dilanjutkan.
+       • Jika Admin memilih "Konfirmasi blokir" → akses permanen diblokir.
+  5. Jika terkunci, halaman menampilkan layar:
+       "سُجِّلَتْ مُخَالَفَةٌ · Akses ujian dihentikan setelah batas pelanggaran
+        terlampaui. Nilai akhir ditentukan guru."
+
+──────────────────────────────────────────────────────────────────────────────
+4.8  MENGUMPULKAN UJIAN
+──────────────────────────────────────────────────────────────────────────────
+  MANUAL (Sebelum waktu habis):
+  1. Klik tombol "Kumpulkan ujian" di sidebar kiri.
+  2. Konfirmasi dialog: "Anda sudah menjawab X dari Y soal. Kumpulkan sekarang?"
+  3. Klik OK — sistem menyinkronkan semua jawaban lalu mengumpulkan.
+  4. Halaman selesai ditampilkan dengan nilai akhir dari guru (jika sudah ada).
+
+  OTOMATIS (Waktu habis):
+  • Ketika timer mencapai 0:00 dan siswa online, sistem otomatis menyinkronkan
+    semua jawaban dan mengumpulkan ujian.
+  • Jika offline saat waktu habis, ujian akan dikumpulkan otomatis saat siswa
+    kembali online dan heartbeat dikirim ke server.
+
+  SYARAT PENGUMPULAN:
+  • Harus online (untuk sinkronisasi akhir)
+  • Semua jawaban harus berhasil tersinkron ke server
+  • Tidak dalam kondisi "violation review required"
+
+──────────────────────────────────────────────────────────────────────────────
+4.9  SETELAH UJIAN SELESAI
+──────────────────────────────────────────────────────────────────────────────
+  • Layar selesai menampilkan: "تم تسليم الاختبار" dengan nilai akhir dari guru.
+  • Jika nilai belum diinput guru: ditampilkan "menunggu input guru".
+  • Klik "Kembali ke daftar ujian" untuk melihat ujian lain.
+  • Di daftar ujian, status berubah menjadi "SELESAI" disertai nilai akhir.
+
+
+════════════════════════════════════════════════════════════════════════════════
+               BAGIAN 5 — ALUR KERJA UJIAN DARI AWAL HINGGA AKHIR
+════════════════════════════════════════════════════════════════════════════════
+
+Berikut adalah urutan lengkap proses ujian:
+
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │  FASE PRA-UJIAN                                                          │
+  │                                                                          │
+  │  1. [Admin] Atur pengaturan sekolah (kelas, tingkat, batas pelanggaran) │
+  │  2. [Admin/Guru] Buat mata pelajaran jika belum ada                     │
+  │  3. [Admin/Guru] Buat bank soal dengan soal-soal lengkap                │
+  │  4. [Admin] Daftarkan semua siswa (satu per satu atau import CSV)       │
+  │  5. [Admin] Simpan dan sampaikan kredensial ke siswa                    │
+  │  6. [Admin] Buat rancangan ujian (pilih bank, kelas, jumlah soal,      │
+  │             durasi) → soal diacak otomatis per siswa                    │
+  └──────────────────────────────────────────────────────────────────────────┘
+               ↓
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │  FASE PELAKSANAAN UJIAN                                                  │
+  │                                                                          │
+  │  7. [Admin] Ubah status ujian dari draft/scheduled → active             │
+  │  8. [Admin] Buka Monitor ujian (dari halaman Ujian, klik ikon mata)    │
+  │  9. [Admin] Terbitkan PIN (tentukan masa berlaku, klik Terbitkan PIN)   │
+  │ 10. [Admin] Sampaikan PIN 6 digit kepada peserta di ruang ujian        │
+  │ 11. [Siswa] Login ke portal siswa dengan username dan token awal        │
+  │ 12. [Siswa] Klik "Masukkan PIN" pada ujian yang tersedia                │
+  │ 13. [Siswa] Masukkan PIN, klik "Periksa perangkat & mulai"             │
+  │ 14. [Siswa] Izinkan layar penuh dan pemeriksaan layar di browser       │
+  │ 15. [Siswa] Jawab soal satu per satu, jawaban tersimpan otomatis       │
+  │ 16. [Admin] Pantau peserta di halaman Pantau Ujian secara real-time    │
+  │ 17. [Admin] Tinjau sinyal pelanggaran, beri keputusan jika diperlukan  │
+  │ 18. [Siswa] Kumpulkan ujian (manual) atau tunggu waktu habis (otomatis) │
+  └──────────────────────────────────────────────────────────────────────────┘
+               ↓
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │  FASE PASCA-UJIAN                                                        │
+  │                                                                          │
+  │ 19. [Admin] Ubah status ujian dari active → completed                   │
+  │ 20. [Admin/Guru] Buka Hasil Ujian, nilai setiap soal essay per siswa   │
+  │ 21. [Admin/Guru] Masukkan nilai akhir untuk setiap siswa               │
+  │ 22. [Siswa] Nilai akhir terlihat di daftar ujian portal siswa          │
+  └──────────────────────────────────────────────────────────────────────────┘
+
+
+════════════════════════════════════════════════════════════════════════════════
+               BAGIAN 6 — CATATAN TEKNIS DAN KEAMANAN SISTEM
+════════════════════════════════════════════════════════════════════════════════
+
+6.1  KEAMANAN SESI
+  • Sesi berbasis server (PostgreSQL) — tidak dapat dipalsukan dari browser.
+  • Cookie httpOnly, sameSite='lax', tidak dapat diakses JavaScript.
+  • Sesi kedaluwarsa setelah 8 jam.
+
+6.2  KEAMANAN SOAL
+  • Kunci jawaban TIDAK dikirim ke browser siswa.
+  • Setiap siswa mendapat urutan soal dan opsi PG yang berbeda.
+  • Shuffling disimpan permanen di server — tidak berubah meski sesi dimuat ulang.
+
+6.3  KEAMANAN KREDENSIAL
+  • Token siswa disimpan sebagai hash bcrypt di database.
+  • Token hanya dapat dilihat SATU KALI saat pembuatan akun.
+  • Tidak ada endpoint untuk melihat ulang token.
+
+6.4  AUDIT TRAIL
+  • Semua tindakan penting dicatat di tabel audit_logs dengan timestamp,
+    user ID, dan detail tindakan.
+  • Tindakan yang dicatat: login, buat siswa, import siswa, buat bank, buat ujian,
+    ubah pengaturan, nilai essay, nilai akhir, pelanggaran, tinjauan pelanggaran,
+    reset sesi, dan lainnya.
+
+6.5  RATE LIMITING
+  • Login: maks 10 percobaan gagal per akun per 15 menit.
+  • Simpan jawaban: maks 120 per menit per siswa.
+  • Laporan sinyal: maks 12 per 5 menit per siswa.
+  • Heartbeat: maks 30 per menit per siswa.
+  • Mulai ujian: maks 8 per 15 menit per siswa.
+  • Terbitkan PIN: maks 6 per 15 menit per Admin.
+
+
+════════════════════════════════════════════════════════════════════════════════
+                        BAGIAN 7 — PERTANYAAN UMUM (FAQ)
+════════════════════════════════════════════════════════════════════════════════
+
+Q: Siswa lupa token awalnya. Apa yang harus dilakukan?
+A: Token tidak dapat dilihat ulang dari sistem. Admin perlu menghapus akun
+   siswa tersebut dan membuatkan akun baru, lalu menyampaikan token baru.
+
+Q: Apakah ujian bisa dikerjakan di HP?
+A: Secara teknis bisa, tapi direkomendasikan menggunakan laptop atau komputer
+   karena fitur pemeriksaan layar (Screen Details API) mungkin tidak tersedia
+   di browser mobile, dan mode layar penuh lebih terbatas.
+
+Q: Apa yang terjadi jika listrik/browser mati saat siswa mengerjakan?
+A: Jawaban yang sudah disimpan lokal (terenkripsi) tetap aman. Saat siswa
+   login kembali dan melanjutkan ujian, semua jawaban yang tersimpan lokal
+   akan dimuat ulang dan disinkronkan ke server.
+
+Q: Bisakah Admin melihat jawaban siswa sebelum ujian selesai?
+A: Tidak — jawaban hanya tersedia di halaman Hasil Ujian setelah sesi
+   selesai (status: completed atau locked).
+
+Q: Bagaimana jika PIN kedaluwarsa sebelum semua siswa masuk?
+A: Admin perlu menerbitkan PIN baru dari panel Monitor. Siswa yang sudah
+   masuk tidak terpengaruh.
+
+Q: Bisakah seorang siswa mengerjakan ujian dari perangkat berbeda?
+A: Bisa, tapi mereka perlu login ulang. Jawaban yang tersimpan lokal di
+   perangkat lama tidak akan otomatis tersinkron kecuali siswa membuka
+   ujian dari perangkat yang sama. Sisi server tetap menyimpan semua
+   jawaban yang sudah tersinkron sebelumnya.
+
+Q: Apa yang dimaksud dengan "false positive" pada pelanggaran?
+A: Sinyal yang terdeteksi browser tapi bukan merupakan kecurangan nyata,
+   contoh: sistem notifikasi OS yang menyebabkan blur sebentar, atau
+   koneksi yang terputus sementara. Admin meninjau konteks dan dapat
+   menandai sinyal tersebut sebagai false positive.
+
+Q: Apakah soal PG selalu urutan A, B, C, D untuk semua siswa?
+A: Tidak. Opsi PG diacak per siswa oleh server — siswa A mungkin melihat
+   jawaban benar di posisi B, sementara siswa B di posisi D untuk soal
+   yang sama. Kunci jawaban yang disimpan di database disesuaikan per siswa.
+
+
+════════════════════════════════════════════════════════════════════════════════
+                             AKHIR DOKUMEN
+================================================================================
+Dibuat dari analisis kode sumber CBT IMBS — Oktober 2026
+Untuk pertanyaan teknis, rujuk ke file blueprint.md dan update.md
+================================================================================
+
+
+
+BAGIAN 8 — SOAL BERGAMBAR, RUMUS, DAN BAHASA MATA PELAJARAN
+
+1. Buka **Bank Soal → Buat bank soal**. Pilih mata pelajaran, topik/materi, dan kelas.
+2. Jika mata pelajaran belum ada, pilih **Mata pelajaran**. Isi nama, bahasa soal (Indonesia, Arab, atau Inggris), dan arah teks. Untuk Bahasa Arab gunakan Arab/RTL; untuk Fisika, Kimia, Matematika, Biologi, dan lainnya gunakan bahasa soal yang sesuai.
+3. Masukkan jumlah PG dan essay. Form soal muncul sesuai jumlah; isi opsi A–D dan kunci untuk PG, atau rubrik untuk essay.
+4. Lampirkan satu gambar JPG, PNG, atau WebP maksimal 3 MB per soal. Isi deskripsi gambar agar dapat dibaca pembaca layar. Gambar hanya bisa ditambah atau dihapus sebelum bank dijadwalkan ke ujian.
+5. Tulis rumus LaTeX dengan pembatas \( ... \) untuk sebaris, atau \[ ... \] untuk baris tersendiri. Contoh: \(F = m \times a\) dan \[a^2 + b^2 = c^2\]. Rumus ditampilkan pada soal dan opsi jawaban.
+
+Gambar disimpan di Docker volume khusus, terpisah dari PostgreSQL. Backup dan pemulihan harus mencakup dump database serta volume gambar soal.

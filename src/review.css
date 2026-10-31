@@ -1,0 +1,12 @@
+.essay-review-heading{display:flex;justify-content:space-between;gap:10px;align-items:center;border-radius:8px;background:#f5f8f6;padding:10px 12px;margin-bottom:10px;color:#45566b;font-size:10px}.essay-review-heading span{color:#82909e}.essay-review-list{display:grid;gap:9px;max-height:60vh;overflow:auto}.essay-grade-card{border:1px solid #e9edf0;border-radius:9px;padding:12px}.essay-grade-meta{display:flex;align-items:center;justify-content:space-between;color:#59697c;font-size:10px}.essay-grade-meta span{color:#8995a2}.essay-grade-card>p{font-size:12px;line-height:1.7;color:#33445a}.essay-student-answer{white-space:pre-wrap;min-height:48px;border-radius:7px;padding:10px;background:#f7f8fa;color:#5d6b7d;font-size:11px;line-height:1.7}.essay-grade-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px}.essay-grade-controls label{display:flex;align-items:center;gap:6px;font-size:10px;color:#748194}.essay-grade-controls input{width:76px;height:32px;border:1px solid #e1e7eb;border-radius:6px;padding:0 7px}.essay-grade-controls>button{padding:7px 10px;font-size:9px}@media(max-width:600px){.essay-review-heading{align-items:flex-start;flex-direction:column}.essay-grade-controls{align-items:flex-end}.essay-grade-controls>button{white-space:nowrap}}
+
+
+.results-table .table-row{grid-template-columns:minmax(145px,1.2fr) minmax(125px,1fr) 92px 86px 78px 82px minmax(120px,.9fr) minmax(170px,1.2fr);min-width:1120px;gap:9px}
+.results-table .table-label{font-size:8px}
+.result-subtext{display:block;margin-top:4px;color:#96a1ad;font-size:8px}
+.result-metric{font-weight:700;color:#42556b}
+.result-metric small{display:block;margin-top:3px;color:#8b97a5;font-size:8px;font-weight:500}
+.final-score-editor{display:grid;grid-template-columns:72px auto;align-items:center;gap:5px}
+.final-score-editor input{min-width:0;width:72px;height:31px;border:1px solid #dfe6e9;border-radius:6px;padding:0 6px}
+.final-score-editor button{padding:7px 8px;font-size:8px;white-space:nowrap}
+.final-score-editor small{grid-column:1/-1;color:#81909d;font-size:8px}

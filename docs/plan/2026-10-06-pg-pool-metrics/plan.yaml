@@ -1,0 +1,547 @@
+plan_id: 2026-10-06-pg-pool-metrics
+status: blocked
+tldr: |
+  Reduce per-process PostgreSQL concurrency to a conservative 10-client starting
+  point for the stated 2-core host, fail promptly on pool/query timeouts, emit
+  pool and Prometheus metrics on the private Compose network, and document an
+  operational runbook plus staged follow-up load test. Continue with live scrape
+  verification, source-map-js dependency remediation, and a measured staged rerun.
+  These settings are tunable hypotheses, not universal optima or a production-
+  readiness claim.
+created_at: "2026-10-06"
+created_by: gem-planner
+revision: 3
+planner_revision_used: true
+replan_count: 0
+
+tasks:
+  - id: pool-overload-and-metrics
+    title: Bound PostgreSQL waits and expose low-cardinality metrics
+    description: >-
+      [reuse current Express/pg Pool and Node built-in test runner; add only the
+      expressly requested prom-client dependency] Change the single-process
+      DB_POOL_MAX fallback from 50 to 10, retaining the existing environment
+      override and validation range. This is a conservative initial setting for
+      the stated 2-core/4-thread, 24-GB host where API and PostgreSQL share CPU;
+      it is not an optimality guarantee. Configure DB_CONNECTION_TIMEOUT_MS=1000
+      mapped to node-postgres connectionTimeoutMillis and DB_QUERY_TIMEOUT_MS=5000
+      mapped to its query timeout, with bounded, validated overrides. Classify
+      only pool-acquisition and configured query-timeout failures as temporary
+      overload: return HTTP 503, Retry-After: 1, a stable overload code and a
+      non-sensitive message while preserving the existing string error field.
+      Leave unrelated SQL/auth/schema failures on the existing generic-error
+      path. Log one JSON pool sample every 5000 ms with an ISO timestamp and
+      public totalCount/idleCount plus numeric waitingCount when exposed, otherwise
+      null (never zero); feature-detect the property and do not inspect pg private
+      internals. Make the sampler singleton/idempotent, unref its timer, and clear
+      it during graceful shutdown. Add prom-client process collectors plus HTTP
+      count and duration with bounded method, route-template and status labels.
+      Use an explicit finite allowlist of common methods and map every other method
+      to the fixed OTHER value; use normalized route templates with a fixed fallback
+      for unmatched routes. Inventory existing instrumentation first and
+      detect/avoid duplicate prom-client default HTTP instrumentation. Record
+      exactly one counter increment and one histogram observation per eligible
+      request; exclude /metrics from both. Do not use raw paths/IDs. Serve
+      Prometheus text only on the API service's private Compose network: do not
+      publish the API port and do not proxy /metrics through Nginx; explicitly
+      return 404 for the public frontend /metrics path. Verify the locked
+      pg@8.23.0 / pg-pool@3.14.0 public Pool API and the actual timeout error
+      shapes before finalizing classification.
+    wave: 1
+    depends_on: []
+    agent: gem-implementer
+    status: completed
+    retries_used: 1
+    acceptance_criteria:
+      - >-
+        With one API process, DB_POOL_MAX defaults to 10, remains configurable,
+        and timeout defaults are 1000 ms for acquisition and 5000 ms per query;
+        invalid values safely fall back. The rationale accounts for the shared
+        2-core host and states that there is no universal ideal pool size.
+      - >-
+        Pool acquisition and configured query timeouts produce HTTP 503 with
+        Retry-After: 1, stable structured overload metadata, no driver/internal
+        error leakage, and the existing string error field. Tests demonstrate
+        unrelated database failures do not become overload responses.
+      - >-
+        JSON pool samples occur on a 5000 ms interval and contain timestamp,
+        totalCount, idleCount, and waitingCount; unavailable waitingCount is null
+        with availability made explicit, and no private pg internals are read.
+        Repeated sampler start/stop does not create duplicate intervals or keep
+        Node alive.
+      - >-
+        GET /metrics exports Prometheus text with process CPU, memory and heap
+        collectors plus HTTP request count and duration. The implementation uses
+        an explicit finite common-method allowlist with every other method mapped
+        to OTHER, and a fixed fallback for unmatched normalized routes; varying IDs
+        do not increase label cardinality. Existing instrumentation is inventoried
+        and duplicate prom-client default HTTP instrumentation is avoided. Each
+        eligible request increments the counter once and observes the histogram
+        once; /metrics is excluded from both. Focused tests prove these exactly-once
+        and exclusion properties.
+      - >-
+        The API's Compose port remains unpublished, Nginx does not proxy the
+        metrics endpoint and the public frontend path returns no Prometheus data.
+        Document the same-project-network target api:3000/metrics and scrape
+        configuration. Validation uses static Compose configuration/topology checks
+        and route tests; it may inspect an already-running Prometheus in the same
+        project, but must not start any service. If no such scraper is already
+        running, defer live scrape evidence to the next load test and report that
+        deferral rather than starting services.
+      - >-
+        Focused Node tests cover timeout mapping, metrics access/content,
+        finite method and route fallbacks, cardinality bounds, exactly-once counter
+        and histogram behavior for eligible requests, /metrics exclusion and sampler
+        behavior. No test-only production route or additional testing dependency is
+        introduced.
+    handoff:
+      completion_resolution:
+        status: completed
+        wave_2_unblocked: true
+        acceptance_assessment: >-
+          The wave-1 pool, timeout, metrics, and topology acceptance criteria are
+          met. The focused suite is recorded as 9/9 passing; Node syntax checks,
+          npm build, and static topology checks passed. The npm audit finding is
+          not a wave-1 acceptance criterion and does not prevent proceeding to
+          wave 2.
+        dependency_security_follow_up: >-
+          Keep separate from this task: source-map-js@1.2.1 is in the existing
+          Vite 8.3.1 -> PostCSS 8.5.28 dependency path, while prom-client's
+          dependency tree does not include Vite or PostCSS. update.md records
+          Vite 8.3.1 before this task, but this workspace has no .git directory
+          to establish the exact historical lockfile state. The API image runs
+          npm ci --omit=dev, but Vite is declared under dependencies, so the
+          finding remains relevant to the production image. Do not alter
+          dependency versions or classification here; track a separate
+          dependency-security task.
+      constraints:
+        - >-
+          Preserve current public API behavior except the required additive 503
+          overload fields; never expose raw PostgreSQL or timeout error messages.
+        - >-
+          Preserve private Compose-only metrics access; do not add a public port,
+          route metrics through Nginx, or add a Prometheus service as part of this
+          scope.
+        - >-
+          Use only public pg.Pool counters and feature-detect waitingCount; null
+          means unavailable and must never be reported as zero.
+        - >-
+          One pool exists per API process. Document/reason about aggregate
+          connection budget as API replica/process count times per-process max,
+          plus other clients, against PostgreSQL max_connections=100.
+        - >-
+          Do not run destructive Docker operations, remove volumes, or perform
+          database cleanup as part of focused validation.
+      relevant_context:
+        - >-
+          server/db.js currently defaults DB_POOL_MAX to 50, caps configured
+          values at 200, and has idleTimeoutMillis=30000; it has no connection
+          or query timeout configuration.
+        - >-
+          server/index.js has one Express app, central error middleware near the
+          end, and starts initialization/listening at module top level. Testable
+          route/module boundaries may be needed, but avoid a broad server rewrite.
+        - >-
+          docker-compose.yml runs one api service next to postgres:17-alpine;
+          the API has no published ports. Nginx publishes only frontend 80/443
+          (host 8080/8443) and proxies only /api/.
+        - >-
+          package-lock.json pins pg 8.23.0 and pg-pool 3.14.0; package.json has
+          no test script/framework. Use node:test/node:assert before adding any
+          other dependency. prom-client is explicitly authorized.
+        - >-
+          update.md and the capacity artifact record 1,260 successful lifecycle
+          requests and 24 monitor polls, zero errors/429/inconsistencies, pool
+          max 50/50 at cohorts 50 and 150, up to 48 active DB connections at 150,
+          26.68 s start p95 and 14.24 s monitor p95. Previous resource sampling
+          was sparse and the host hardware was not recorded for that run.
+        - >-
+          The user now supplies Intel i3-7100 (2 cores/4 threads) and 24 GB RAM;
+          API and PostgreSQL share this host. Prior latency can also reflect CPU
+          work (including bcrypt), so pool occupancy alone does not prove cause.
+        - >-
+          pengembangan.md already requires a staged 10/50/150 load test, p50/p95/p99,
+          errors/429, DB queue/lock pressure, API/database CPU and memory, and
+          owner-agreed thresholds before any go/no-go claim.
+      high_risk_signals:
+        - api_change
+        - shared_state
+      critic_signals: []
+
+  - id: live-prometheus-scrape
+    title: Verify the running Prometheus scrape and private metrics boundary
+    description: >-
+      [reuse the running Prometheus and current Compose network; do not start or
+      recreate services] Inspect the supplied running Prometheus target for the
+      API scrape job and verify a successful scrape of api:3000/metrics. Record
+      target health, scrape time, response content type, and representative
+      process, HTTP, and DB-pool metric families/samples. Confirm the API remains
+      unpublished on host ports and Nginx/frontend does not expose metrics. The
+      current Compose file publishes Prometheus on host port 9090; record that
+      topology accurately without changing it. If the target is absent or cannot
+      be queried, stop and report the precise blocker; do not start services or
+      infer a successful scrape.
+    wave: 3
+    depends_on: []
+    agent: gem-devops
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - >-
+        The existing Prometheus target for api:3000/metrics is reported UP with
+        a successful scrape and observed scrape timestamp; if not, task is
+        blocked with evidence and no services are started or recreated.
+      - >-
+        Evidence records the metrics HTTP content type and representative
+        process CPU/memory, HTTP request/latency, and DB pool metric families
+        with sample values, without exposing credentials or sensitive labels.
+      - >-
+        Current topology is checked: API has no host-published port and the
+        frontend/Nginx route does not serve metrics. Prometheus host port 9090
+        is recorded as currently configured; no port or proxy changes are made.
+    handoff:
+      constraints:
+        - >-
+          Prometheus running is user-supplied context; verify its actual current
+          target state before reporting success.
+        - >-
+          Do not start, stop, recreate, or reconfigure services. Do not publish
+          the API or expose its /metrics route publicly.
+        - Preserve the current user-edited Compose topology.
+      relevant_context:
+        - >-
+          docker-compose.yml currently defines Prometheus using prometheus.yml,
+          publishes 9090:9090, and defines no host port for api; Nginx publishes
+          only 8080/8443 and proxies /api/.
+        - >-
+          prometheus.yml targets api:3000 using the cbt-imbs-api-metrics job;
+          the plan's intended application metrics endpoint is private to the
+          Compose network.
+      high_risk_signals:
+        - security_sensitive
+        - shared_state
+      critic_signals: []
+
+  - id: source-map-js-audit
+    title: Establish the source-map-js advisory and compatible fix path
+    description: >-
+      [reuse npm audit and the existing lockfile; investigation only] Inspect the
+      current npm audit report, npm dependency explanation, package.json, and
+      package-lock.json for source-map-js. Confirm the exact advisory IDs/severity,
+      installed and required versions, dependency path through Vite/PostCSS,
+      whether the affected packages enter npm ci --omit=dev in server/Dockerfile,
+      and the smallest fixed version or dependency classification compatible with
+      the current Vite and build. Do not modify dependencies in this task and do
+      not run broad upgrades. Return the evidence and remediation recommendation
+      for the dependent implementation task; include residual risk if no compatible
+      fix exists.
+    wave: 3
+    depends_on: []
+    agent: gem-reviewer
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - >-
+        Audit output identifies each applicable advisory, exact locked package
+        versions, and the resolved source-map-js dependency chain from current
+        package metadata.
+      - >-
+        The recommended minimal remediation is demonstrated compatible with the
+        current Vite version and frontend build dependency graph, or the task
+        reports a concrete incompatibility and residual-risk recommendation.
+      - >-
+        Production-image relevance is established from the current Dockerfile
+        install mode and package classification; no dependency files are changed.
+    handoff:
+      constraints:
+        - Investigate only; do not edit dependency manifests or lockfiles here.
+        - Do not upgrade unrelated packages or use blanket npm audit fix.
+      relevant_context:
+        - >-
+          package.json currently declares vite and @vitejs/plugin-react under
+          dependencies, with vite set to latest; server/Dockerfile runs npm ci
+          --omit=dev, so production-image inclusion must be verified from the
+          actual lock/package graph rather than assumed.
+        - >-
+          Earlier investigation reported source-map-js@1.2.1 via Vite 8.3.1 ->
+          PostCSS 8.5.28, but exact historical lock state is uncertain and the
+          current audit must determine the applicable advisory and fix.
+      high_risk_signals:
+        - security_sensitive
+      critic_signals: []
+
+  - id: source-map-js-remediation
+    title: Apply the minimal compatible source-map-js remediation
+    description: >-
+      [smallest dependency-only change after audit evidence] Apply only the fix
+      path established by source-map-js-audit: update the relevant lock resolution
+      or the narrowly necessary dependency classification/metadata without
+      unrelated upgrades. Preserve the current Vite major/version compatibility
+      and project conventions. Validate install/lock consistency, npm run build,
+      and the API production image's npm ci --omit=dev build/install path without
+      replacing or restarting running services. Record remaining advisories and
+      any residual risk for the documentation milestone.
+    wave: 4
+    depends_on:
+      - source-map-js-audit
+    agent: gem-implementer
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - >-
+        Only the dependency manifest/lock entries required by the confirmed
+        source-map-js remediation change; unrelated package versions remain
+        unchanged.
+      - >-
+        npm audit no longer reports the addressed source-map-js finding for the
+        applicable installation scope, or the remaining advisory is documented
+        with its exact reason and residual risk.
+      - >-
+        A clean lockfile install, frontend production build, and API production
+        image build using npm ci --omit=dev succeed; no running service is
+        replaced/restarted as part of this validation.
+      - >-
+        Existing app functionality is preserved by the successful frontend
+        build and a focused check of the API production image/runtime dependency
+        path; no database migration or data mutation is introduced.
+    handoff:
+      constraints:
+        - >-
+          Follow the audit task's evidence; if no compatible fix is established,
+          do not guess a version and report blocked with residual risk.
+        - >-
+          Do not run blanket npm audit fix, upgrade unrelated dependencies, or
+          change application behavior unrelated to the finding.
+        - >-
+          Do not stop/recreate the database, remove volumes, or restart running
+          services; use image/build checks that leave the current stack intact.
+      relevant_context:
+        - >-
+          package.json and package-lock.json are the only expected change
+          surface unless the audit proves another narrowly required metadata
+          change.
+        - >-
+          server/Dockerfile performs npm ci --omit=dev before copying server;
+          the fixed lock resolution must remain installable in this production
+          image path.
+      high_risk_signals:
+        - security_sensitive
+      critic_signals: []
+
+  - id: instrumented-capacity-rerun
+    title: Rerun staged lifecycle load with pool and resource evidence
+    description: >-
+      [reuse scripts/capacity-load.mjs and synthetic fixtures; minimal evidence
+      collector changes only if required] After live metrics and dependency/image
+      validation, inspect the current running stack and harness preflight before
+      any fixture mutation. Run staged 10/50/150 synthetic participant lifecycle
+      traffic with the new API instrumentation. Capture p50/p95/p99, success/error/
+     429 counts, direct API pool JSON samples (totalCount, idleCount,
+      waitingCount/availability), Prometheus HTTP/process metric evidence, and
+      API/PostgreSQL CPU and memory samples; verify lifecycle and answer
+      consistency. Retain per-stage evidence and use the harness's exact-ID
+      deterministic cleanup. Preserve baseline records, database, and volume
+      identities. If live topology differs from harness assumptions or preflight
+      cannot establish exact target/cleanup scope, stop before fixture creation.
+      Report observations only; owner thresholds are not supplied.
+    wave: 5
+    depends_on:
+      - live-prometheus-scrape
+      - source-map-js-remediation
+    agent: gem-devops
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - >-
+        The current local Compose target, running API/database identities,
+        healthy DB, mounted volume identities, baseline table counts, and
+        marker collision-free state are verified by preflight before mutation;
+        mismatch blocks the run before fixture creation.
+      - >-
+        The existing harness completes cohorts of 10, 50, and 150 synthetic
+        participants and captures lifecycle request/poll latency p50/p95/p99,
+        success/error/429 counts, answer consistency, and per-stage API/PostgreSQL
+        CPU and memory samples.
+      - >-
+        Evidence includes direct pool JSON samples for totalCount, idleCount,
+        waitingCount and its availability semantics, plus scrape/instrumentation
+        samples; unavailable waitingCount remains null and is never inferred as 0.
+      - >-
+        Deterministic cleanup removes only manifest-verified synthetic fixture
+        IDs; post-run baseline counts and volume identities match preflight, and
+        no database/volume is stopped, recreated, or deleted.
+      - >-
+        Results include limitations and comparison to the prior local baseline;
+        no go/no-go or production-readiness claim is made without owner-agreed
+        thresholds.
+    handoff:
+      constraints:
+        - Use synthetic accounts/exams only; never touch real student data.
+        - >-
+          Preserve the current Compose topology and every running service,
+          including Prometheus, API, and database. Do not start, stop, recreate,
+          or reconfigure any service without separate explicit user authorization.
+          Do not delete volumes or mutate real student data.
+        - >-
+          Use the existing harness cleanup manifest and exact-ID assertions;
+          if cleanup cannot be verified, stop and report without broad deletion.
+        - >-
+          Do not invent school performance thresholds or claim production
+          readiness from a local host run.
+      relevant_context:
+        - >-
+          scripts/capacity-load.mjs stages 10/50/150 and snapshots baseline table
+          counts, checks the local Compose project and DB health, creates 211
+          marker-prefixed synthetic users, 3 exams and 210 sessions, measures
+          p50/p95/p99 and samples API/PostgreSQL Docker CPU/memory plus pg_stat_activity.
+        - >-
+          The harness deletes only validated IDs and verifies post-cleanup table
+          counts and volume identities; its current pool proxy does not expose
+          direct node-postgres waitingCount, so collect the new 5-second API JSON
+          pool logs and Prometheus samples rather than treating pg_stat_activity
+          as an equivalent.
+        - >-
+          Prior local baseline recorded 1,260 lifecycle successes, 24 monitor
+          polls, no errors/429/inconsistencies, start p95 26.68 s, monitor p95
+          14.24 s, old 50/50 pool occupancy, and up to 48 active DB connections;
+          it is host-specific and not an acceptance threshold.
+      high_risk_signals:
+        - security_sensitive
+        - shared_state
+      critic_signals: []
+
+  - id: record-follow-up-results
+    title: Record scrape, security, and load evidence
+    description: >-
+      [reuse update.md and pengembangan.md; do not create README] Append a dated
+      progress entry to update.md covering live Prometheus scrape evidence,
+      source-map-js advisory/remediation/residual risk, and per-stage load results,
+      cleanup proof, resource/pool sampling limits, and comparison with the
+      previous baseline. Update the existing operational load-test notes in
+      pengembangan.md with the new run evidence and any changed dependency or
+      scrape operational guidance. Update this plan's task and overall statuses
+      to match actual evidence; leave blocked/incomplete work unmarked complete.
+    wave: 6
+    depends_on:
+      - live-prometheus-scrape
+      - source-map-js-remediation
+      - instrumented-capacity-rerun
+    agent: gem-documentation-writer
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - >-
+        update.md has a titled progress entry with execution date/time and
+        evidence for each completed or blocked follow-up, preserving historical
+        entries and containing no README creation.
+      - >-
+        pengembangan.md records the repeatable scrape/load evidence, current
+        limitations, cleanup and operational safety facts, and no invented
+        owner threshold or production-readiness claim.
+      - >-
+        This plan records completion/blocker status accurately and only marks
+        tasks complete when their evidence-based acceptance criteria are met.
+    handoff:
+      constraints:
+        - Preserve historical progress entries; append, do not rewrite history.
+        - Do not create README.md or another progress log.
+        - >-
+          Preserve truthful caveats: host-specific measurements, owner-set
+          thresholds absent, and any unresolved npm advisory or scrape limitation.
+      relevant_context:
+        - >-
+          update.md is the chronological project progress log, and pengembangan.md
+          owns the operational test/runbook guidance.
+      high_risk_signals:
+        - security_sensitive
+        - shared_state
+      critic_signals: []
+
+  - id: operations-guide-and-validation
+    title: Document operating defaults and the next measured load test
+    description: >-
+      [reuse existing operational docs; do not create README] Update pengembangan.md
+      with the selected per-process pool max (10), connection/query timeout defaults
+      (1000/5000 ms), fixed 5000 ms JSON sample interval and fields, env overrides,
+      multi-process aggregate connection budgeting, timeout response semantics,
+      and the reason these are conservative starting points rather than universal
+      capacity settings. Explain the secure scrape boundary: api:3000/metrics is
+      reachable by Prometheus attached to the same Compose project network, the API
+      port is not host-published, Nginx does not proxy the route, and public scraping
+      is unsupported. Validate without starting services: use static Compose
+      configuration/topology checks and route tests, and optionally inspect an
+      already-running same-project Prometheus. If none is running, document the
+      target/scrape configuration and defer live scrape evidence to the next load
+      test. Add a staged 10/50/150 next-test checklist that captures the
+      new pool wait/active/idle metrics, process and DB CPU/memory, HTTP latency and
+      overload responses alongside the existing lifecycle harness; require the
+      owner to set thresholds and preserve the prior baseline for comparison. State
+      explicitly that an i3-7100 result cannot certify another host or production.
+      Append a concise dated implementation/progress entry to update.md per project
+      convention. Validate focused tests, Node syntax, npm build and docker compose
+      config without bringing down services, deleting data or claiming production
+      readiness.
+    wave: 2
+    depends_on:
+      - pool-overload-and-metrics
+    agent: gem-implementer
+    status: completed
+    retries_used: 0
+    acceptance_criteria:
+      - >-
+        pengembangan.md states all chosen defaults and override environment
+        variables, sample JSON shape, timeout response behavior, aggregate pool
+        budget, and why no universal pool optimum is claimed.
+      - >-
+        The operational guide explains how same-network Prometheus reaches
+        api:3000/metrics, why host/public access is unavailable, and that the
+        Nginx/frontend path is not a scrape endpoint.
+      - >-
+        A staged 10/50/150 load-test to-do captures request percentiles and errors,
+        pool waiting/total/idle observations, API and PostgreSQL resources, and
+        comparison with the recorded baseline; it leaves acceptance thresholds
+        to the school and makes no production-readiness claim.
+      - >-
+        update.md receives a dated progress record; no README is added and existing
+        historical entries are preserved.
+      - >-
+        Focused tests, including route tests, pass; node --check passes for changed
+        server JavaScript, static Compose configuration/topology checks pass,
+        npm run build passes, and docker compose config parses successfully. Any
+        unavailable or failing gate is reported with evidence. An already-running
+        same-project Prometheus may be inspected without starting services; if none
+        exists, document the scrape target/configuration and defer live scrape
+        evidence to the next load test.
+    handoff:
+      constraints:
+        - Preserve update.md as the chronological progress log and use pengembangan.md for operational guidance.
+        - Do not start or tear down Docker services, mutate database fixtures, or delete persistent volumes for validation.
+        - Report resource/latency results as host-specific observations, not guarantees; do not invent school acceptance thresholds.
+      relevant_context:
+        - >-
+          update.md contains the 6 October 10/50/150 local baseline and limits;
+          append to it instead of rewriting historical notes.
+        - >-
+          pengembangan.md contains the established staged load-test and no-go
+          sections and is the suitable home for durable operational instructions.
+        - >-
+          Compose's default project network includes api and can include an
+          operator-managed Prometheus container; the existing deployment does
+          not include Prometheus, so document integration rather than adding a
+          monitoring stack.
+      high_risk_signals:
+        - api_change
+        - shared_state
+      critic_signals: []
+
+review_blocker:
+  task_id: instrumented-capacity-rerun
+  finding: >-
+    The plan review is blocking because the load-test handoff could be read as
+    permitting API or Prometheus lifecycle changes without separate authorization.
+    The plan has already used its single allowed planner revision, so execution is
+    paused for user direction. No follow-up scrape, audit, remediation, or load test
+    has started in this extension.
+  reviewer_action: >-
+    Clarify that all service start/stop/recreate/reconfigure actions require separate
+    explicit user authorization; preserve database and volume protections.

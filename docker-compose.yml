@@ -1,0 +1,115 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: cbt-imbs-db
+    command: [
+      "postgres",
+      "-c", "max_connections=${POSTGRES_MAX_CONNECTIONS:-150}",
+      "-c", "shared_buffers=512MB",
+      "-c", "work_mem=16MB",
+      "-c", "effective_cache_size=1536MB",
+      "-c", "checkpoint_completion_target=0.9"
+    ]
+    environment:
+      POSTGRES_DB: cbt_imbs
+      POSTGRES_USER: cbt
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cbt_local_password}
+      CONTROL_DB_NAME: ${CONTROL_DB_NAME:-cbt_control_plane}
+      CONTROL_DB_USER: ${CONTROL_DB_USER:-cbt_control_app}
+      CONTROL_DB_PASSWORD: ${CONTROL_DB_PASSWORD:-}
+    volumes:
+      - cbt-imbs-data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cbt -d cbt_imbs"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "127.0.0.1:5433:5432"
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: cbt-imbs-api
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      TENANCY_ENABLED: ${TENANCY_ENABLED:-false}
+      CONTROL_DB_NAME: ${CONTROL_DB_NAME:-}
+      CONTROL_DB_USER: ${CONTROL_DB_USER:-}
+      CONTROL_DB_PASSWORD: ${CONTROL_DB_PASSWORD:-}
+      TENANT_MASTER_KEY_FILE: ${TENANT_MASTER_KEY_FILE:-}
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: cbt_imbs
+      DB_USER: cbt
+      DB_PASSWORD: ${DB_PASSWORD:-cbt_local_password}
+      DB_POOL_MAX: ${DB_POOL_MAX:-70}
+      DB_CONNECTION_TIMEOUT_MS: ${DB_CONNECTION_TIMEOUT_MS:-5000}
+      DB_QUERY_TIMEOUT_MS: ${DB_QUERY_TIMEOUT_MS:-5000}
+      QUESTION_MEDIA_DIR: /app/uploads/question-media
+      QUESTION_MEDIA_MAX_TOTAL_BYTES: ${QUESTION_MEDIA_MAX_TOTAL_BYTES:-1073741824}
+      SESSION_SECRET: ${SESSION_SECRET:-local-development-only-change-this-secret}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin123}
+      SEED_TEACHER_PASSWORD: ${SEED_TEACHER_PASSWORD:-guru123}
+      SEED_PLATFORM_OWNER_PASSWORD: ${SEED_PLATFORM_OWNER_PASSWORD:-platform-owner-local}
+      ROTATE_DEMO_SEED_PASSWORDS: ${ROTATE_DEMO_SEED_PASSWORDS:-false}
+      SEED_DEMO_STUDENTS: ${SEED_DEMO_STUDENTS:-false}
+      LEGACY_BOOTSTRAP_SEED_ENABLED: ${LEGACY_BOOTSTRAP_SEED_ENABLED:-true}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://10.10.4.235:8443}
+      CORS_ORIGINS: "${CORS_ORIGINS:-https://10.10.4.235:8443}"
+      LOCAL_LOAD_TEST_MODE: ${LOCAL_LOAD_TEST_MODE:-false}
+      COOKIE_SECURE: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - cbt-imbs-uploads:/app/uploads
+      - ./secrets:/run/secrets:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 4s
+      retries: 5
+      start_period: 20s
+
+  cbt-imbs:
+    build:
+      context: .
+      args:
+        VITE_API_BASE_URL: ""
+        VITE_SHOW_DEMO_ACCOUNTS: ${VITE_SHOW_DEMO_ACCOUNTS:-false}
+        VITE_TENANCY_ENABLED: ${TENANCY_ENABLED:-false}
+    container_name: cbt-imbs
+    ports:
+      - "10.10.4.235:8080:80"
+      - "10.10.4.235:8443:443"
+    environment:
+      TLS_HOST: ${TLS_HOST:-10.10.4.235}
+    volumes:
+      - cbt-imbs-certs:/etc/nginx/certs
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cbt-imbs-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "127.0.0.1:9090:9090"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  cbt-imbs-data:
+  cbt-imbs-certs:
+  cbt-imbs-uploads:

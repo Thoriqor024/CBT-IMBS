@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "runId": "20261006093428-57B49DC0",
+  "createdAt": "2026-10-06T09:34:28.039Z",
+  "className": "LOAD-100-20261006093428-57B49DC0",
+  "examTitle": "Load Test 100 20261006093428-57B49DC0",
+  "fixtureIds": {
+    "users": [],
+    "exams": [],
+    "sessions": [],
+    "examQuestions": [],
+    "responses": []
+  },
+  "finishedAt": "2026-10-06T09:34:28.348Z",
+  "outcome": "failed",
+  "cleanup": {
+    "completed": true,
+    "counts": [
+      "audit_logs=0",
+      "user_sessions=0",
+      "sessions=0",
+      "exams=0",
+      "users=0"
+    ]
+  }
+}

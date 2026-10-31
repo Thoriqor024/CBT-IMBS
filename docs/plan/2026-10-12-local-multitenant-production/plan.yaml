@@ -1,0 +1,333 @@
+plan_id: 2026-10-12-local-multitenant-production
+status: pending
+tldr: |
+  Complete and verify the CBT IMBS multi-tenant platform on this Windows PC only.
+  Preserve the current IMBS database and media, wire real platform-owner onboarding
+  to isolated per-school databases, prove fail-closed tenant isolation, test local
+  backup/restore and monitoring, complete independent acceptance with disposable
+  tenants before attempting IMBS migration, and enable tenant mode only after both
+  acceptance and IMBS data parity pass. Keep the legacy stack safe and report exact
+  blockers when prerequisites such as verified account-email mappings are unavailable.
+created_at: "2026-10-12"
+created_by: gem-planner
+revision: 3
+replan_count: 0
+planner_revision_used: false
+
+tasks:
+  - id: local-baseline-and-recovery-point
+    title: Revalidate the local stack and preserve a recovery point
+    description: >-
+      [reuse the existing local Docker Compose stack, tenant foundation, and test
+      suite; add only missing non-destructive checks] On this Windows PC, establish
+      the present Docker/Compose, container, port, volume, database, media, test,
+      and build state before implementation. Inspect environment configuration only
+      for required-key presence and file permissions; never print values. Verify
+      existing dump files by size and SHA-256 without overwriting them, and create a
+      separately named, consistent local database/media recovery point if needed.
+      Run only non-destructive baseline checks. Record evidence and exact blockers in
+      update.md; do not create a README or touch AWS/cloud services.
+    wave: 1
+    depends_on: []
+    agent: gem-researcher
+    status: completed
+    retries_used: 0
+    acceptance_criteria:
+      - Docker Engine and Compose availability, service/container state, exposed local ports, named volumes, database connectivity, media storage, and actual test/build baseline are recorded in update.md with date/time.
+      - Environment readiness is reported as present/missing/unsafe without disclosing secret values; existing configuration and data are not modified.
+      - Existing database dumps are preserved and their file size and SHA-256 are recorded; a new uniquely named consistent database-plus-media recovery point is created before any schema or data mutation if current verified backups are insufficient.
+      - Any unavailable Windows/Docker prerequisite is named precisely, and no later task treats an unavailable service as healthy.
+    handoff:
+      constraints:
+        - Keep all execution on the local Windows PC and local Docker network; do not use AWS, cloud services, or public transfer.
+        - Never echo, copy into reports, or request passwords, keys, tokens, or complete environment-file contents.
+        - Preserve current databases, volumes, backups, and user changes; do not delete, overwrite, or restore over the active database.
+        - Record progress in update.md; do not create README files.
+      relevant_context:
+        - Workspace root is E:\CBT IMBS. Relevant local surfaces are docker-compose.yml, .env, server/index.js, server/db.js, scripts/validate-tenant-env.mjs, prometheus.yml, and update.md.
+        - docker-compose.yml defaults TENANCY_ENABLED to false, binds the web service to 10.10.4.235 ports 8080/8443, publishes Prometheus on 127.0.0.1:9090, and uses PostgreSQL 17 Alpine.
+        - Existing local dumps are backups/20261009_pre_p0-database.dump and backups/20261009_predeploy-database.dump; their present integrity is not established by this plan's discovery.
+        - package.json defines npm test, build, and validate:tenant-env scripts; prior green results in update.md are historical, not current proof.
+      high_risk_signals: [architecture, migration, shared_state, security_sensitive]
+      critic_signals: [architecture]
+
+  - id: integrate-local-control-plane-and-tenant-routing
+    title: Wire fail-closed control-plane authentication and tenant data routing
+    description: >-
+      [reuse server/tenantDatabaseRouter.js, server/tenantRegistry.js,
+      server/tenantDatabaseContext.js, server/tenantRuntime.js, server/tenantSecrets.js,
+      and the existing control-plane migration] Integrate the chosen local architecture:
+      one local application/API and PostgreSQL cluster, a separate control-plane
+      database, and a separate database plus least-privilege app role for each school.
+      Implement control-plane bootstrap against a new, separate database only; bind
+      school-code/email login and the authenticated session to a registry-resolved
+      tenant; route every school-data API, exam-runner, monitor/result, transaction,
+      and question-media authorization through that server-side context. Keep tenant
+      mode disabled by default and fail closed on missing/invalid registry, secrets,
+      schema, status, or database connectivity. Do not move or mutate the existing
+      IMBS database in this milestone.
+    wave: 2
+    depends_on: [local-baseline-and-recovery-point]
+    agent: gem-implementer
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - Control-plane schema and sessions use a database distinct from every school database; each provisioned tenant uses its own database and an app role unable to connect to or access another tenant database.
+      - Login requires school code, email, and password; tenant identity and database selection for every subsequent request come only from trusted registry data and the server-side session, never client database/tenant fields.
+      - All school-data route families, including student runner, uploads/media, exams, monitoring, results, and transactions, use the validated tenant context; unknown, inactive, expired, malformed, unavailable, and misconfigured tenants fail closed without legacy-database fallback.
+      - Session storage and platform-owner identity have a documented control-plane boundary; role checks deny school admins/teachers access to platform operations.
+      - Production-like configuration rejects built-in/demo platform-owner credentials regardless of TENANCY_ENABLED; a negative owner-login test proves the default/demo secret cannot authenticate while tenant mode is disabled.
+      - Authenticated browser mutations require the implemented CSRF/origin defense; focused tests reject missing/invalid CSRF evidence and disallowed origins without mutating data.
+      - Tenant secret resolution uses the local master key/secret provider and encrypted secret store; no plaintext tenant DB credential is persisted or logged, and pool limits fit PostgreSQL connection capacity.
+      - Focused regression tests cover route/context coverage, client tenant spoofing, cross-tenant ID/media attempts, pool isolation, and failure paths; npm test and npm run build pass.
+      - TENANCY_ENABLED remains false in the default/local deployment configuration until the final activation gate.
+    handoff:
+      constraints:
+        - Use only the local PC and local Docker/PostgreSQL services; no cloud deployment or hosted secret manager.
+        - Do not run schema changes against cbt_imbs or alter existing tenant/school data in this milestone.
+        - Keep the application in fail-closed legacy-safe mode by default; never use demo credentials as production authentication.
+        - Apply the production-like owner-credential policy independently of TENANCY_ENABLED; tests may use isolated explicit fixtures, never a shipped fallback.
+        - Preserve existing public APIs unless required for school-code/email authentication; document any client contract change and update its consumer in the same milestone.
+      relevant_context:
+        - server/tenantRuntime.js already checks control DB name/user/password and TENANT_MASTER_KEY_FILE, rejects a control DB matching DB_NAME, and requires a secret provider for runtime creation.
+        - server/migrations/control-plane/001_tenant_registry.sql defines platform users, tenant registry, encrypted DB secrets, platform audit logs, and control-plane user_sessions, but has not been applied to a distinct local control database per current notes.
+        - server/index.js currently creates tenantRuntime only when TENANCY_ENABLED is true; the CBT route code still has a legacy single-pool path and login reads username in legacy mode.
+        - Gate 1 architecture in docs/plan/2026-10-12-saas-readiness/gate1-architecture.md identifies the student runner, media lookup, teacher grants, monitoring, and result routes as tenant-sensitive.
+      high_risk_signals: [architecture, contract_change, auth_change, data_flow_change, migration, security_sensitive, shared_state, cross_domain_impact]
+      critic_signals: [architecture, cross_domain_impact]
+
+  - id: complete-platform-owner-onboarding
+    title: Deliver secure platform-owner operations and real tenant provisioning
+    description: >-
+      [reuse PlatformOwnerConsole, platform routes, TenantProvisioner, and control-plane
+      audit schema; replace draft-only wiring] Establish platform-owner authentication
+      independently of school-admin authentication with a deliberate, non-demo local
+      bootstrap/rotation procedure. Wire owner-authorized onboarding to the real
+      provisioner so an accepted school creates a registry record, isolated database,
+      migrations, least-privilege roles, encrypted credential references, and its
+      initial school admin. Complete the local panel with tenant listing/detail,
+      service status separated from technical health, schema/connection state, basic
+      quotas, and audited provisioning/status actions. Issue initial admin access
+      through a one-time, non-logged local handoff; do not add public registration or
+      external email/cloud dependencies.
+    wave: 3
+    depends_on: [integrate-local-control-plane-and-tenant-routing]
+    agent: gem-implementer
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - No built-in/demo platform-owner password fallback is accepted in any production-like configuration, whether TENANCY_ENABLED is true or false; a negative login test using the default/demo secret fails in each supported production-like mode.
+      - Local owner bootstrap requires an explicitly configured strong secret or a one-time local bootstrap; rotation and revocation are tested without disclosing credentials.
+      - Unauthenticated requests receive 401 and non-owner roles receive 403 for all platform routes; each sensitive operation records actor, tenant, action, time, and non-sensitive reason/detail.
+      - A submission in the real local panel invokes TenantProvisioner rather than returning draft-local-only/queued; missing, invalid, duplicate, and conflicting input is rejected with actionable status and no partial usable tenant.
+      - Successful onboarding creates a distinct tenant DB, applies required schema/email migrations, stores encrypted app/migration credentials by secret reference, creates the first school admin, and returns initial access material at most once without logging it.
+      - The owner can list and inspect tenant metadata, technical database/schema health, service dates/status, and student/teacher quota counts without exposing student identities, exam answers, or grades across tenants.
+      - Owner-session cookies have the intended HttpOnly, Secure (when served over HTTPS), SameSite, path, and expiry attributes; authenticated browser mutations reject missing/invalid CSRF evidence and disallowed origins, with no state change on rejection.
+      - Panel forms supply and validate the provisioner-required school code, display name, admin name/email, trial end, and limits; the actual browser-to-API onboarding path completes against the local stack.
+      - Provisioning has a durable state machine or equivalent record of operation state, audit events, and created-resource inventory (database, roles, registry entry, secret reference, and admin); failed and partial states remain inspectable if cleanup itself fails.
+      - Injected failures at provisioning milestones, including cleanup failure, leave the tenant unavailable and activation-blocking until reconciled; an idempotent recovery/reconciliation test safely resumes or cleans up each recorded resource without duplicates or deleting unrelated resources.
+      - Successful and failed provisioning attempts are audited, retries are idempotent, and no failed/partial provisioning remains unresolved at the end of acceptance; every milestone and evidence is recorded in update.md.
+    handoff:
+      constraints:
+        - Do not use or display demo credentials as owner authentication; never print one-time admin credentials to logs, reports, screenshots, or browser console.
+        - Provision only a local test school unless the operator supplies and authorizes real school identity/contact data; do not invent identity values.
+        - Do not add public self-registration, cloud email/SMS delivery, payment processing, or cloud dependencies.
+        - Never return DB passwords, master keys, or secret-store contents from APIs or the UI.
+        - Do not scope demo-credential rejection to tenant mode; production-like legacy mode must reject built-in/default owner credentials too.
+      relevant_context:
+        - src/App.jsx contains PlatformOwnerConsole, which currently offers only schoolCode/displayName/adminEmail and calls /api/platform/onboarding.
+        - server/index.js currently returns draft-local-only while tenancy is disabled and queued when enabled; neither path calls TenantProvisioner.
+        - server/index.js initializes createPlatformManagement without createTenantProvisioner, so /api/platform/tenants provisioning is unavailable even in tenant mode.
+        - server/tenantProvisioner.js requires adminName, adminEmail, trialEndsAt, and bounded quotas; it returns a generated initialPassword once and currently creates per-tenant migration/app roles and the school admin.
+        - server/seedAccounts.js falls back to platform-owner-local for platform_owner; this is not acceptable for production authentication.
+      high_risk_signals: [contract_change, auth_change, data_flow_change, security_sensitive, shared_state, cross_domain_impact]
+      critic_signals: [architecture, cross_domain_impact]
+
+  - id: implement-local-backup-restore-and-runbook
+    title: Automate and verify tenant-aware backup and restore
+    description: >-
+      [reuse PostgreSQL pg_dump/pg_restore and existing local backup conventions;
+      add only necessary scripts and runbook steps] Provide an operator-invoked local
+      backup procedure covering the control plane, each tenant database, and question
+      media, with consistent snapshots, unique output names, hashes/manifests, safe
+      permissions, and documented retention. Test restoration into newly named
+      isolated databases/paths, never over the active databases or existing backups.
+      Verify restored schema, row counts/relationships, application login and CBT
+      behavior, and media file hashes. Record every run and evidence in update.md.
+    wave: 4
+    depends_on: [complete-platform-owner-onboarding]
+    agent: gem-devops
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - A repeatable local procedure creates separately identifiable control-plane, per-tenant PostgreSQL, and media backups; records timestamp, scope, size, SHA-256, and success/failure without printing secrets.
+      - Backup files are created with restrictive local permissions and are not written into Docker build context, source archives, public directories, or cloud storage.
+      - A restore drill creates a new isolated restore target and verifies schema/migration version, table row counts, foreign-key integrity, login/CBT smoke behavior, and media file hashes against the backup manifest.
+      - The restore drill proves the active database, volumes, source records, and pre-existing backups were not overwritten or deleted; cleanup, if required, removes only the newly created named test targets after evidence is captured.
+      - A runbook defines backup freshness check, restore commands/order, verification, failure handling, and operator confirmation before any real restore; the drill result is recorded in update.md.
+    handoff:
+      constraints:
+        - All backup bytes and restore targets remain on this PC; do not use AWS, cloud storage, or remote destinations.
+        - Never run restore over the active database or remove/replace pre-existing backups, volumes, or source data.
+        - Do not define an unapproved permanent retention or deletion policy; keep cleanup explicit and operator-confirmed.
+        - Do not log secret values or place backup files in source-controlled paths.
+      relevant_context:
+        - Existing backups are under backups/ and their content must remain untouched.
+        - Question media is stored under QUESTION_MEDIA_DIR, currently mounted as cbt-imbs-uploads in Compose.
+        - Tenant DB schema is per school; control-plane secrets are encrypted with TENANT_MASTER_KEY_FILE and must be restorable with the corresponding locally secured key.
+      high_risk_signals: [migration, security_sensitive, shared_state, cross_domain_impact]
+      critic_signals: [architecture]
+
+  - id: implement-local-pilot-monitoring
+    title: Add local health, observability, and pilot operating checks
+    description: >-
+      [reuse prom-client, the existing /metrics endpoint, Prometheus service/config,
+      Docker health checks, and update.md] Make local operational state observable
+      across the control plane and tenant runtime: dependency health, tenant database
+      connectivity/schema status, provisioning failures, bounded pool pressure, API
+      latency/error rate, backup freshness, and available host/container resources.
+      Define actionable pilot checks and an incident/restart/recovery runbook. Keep
+      metrics local and low-cardinality, with no credentials, student data, or
+      per-student/per-email labels.
+    wave: 4
+    depends_on: [complete-platform-owner-onboarding]
+    agent: gem-devops
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - Health checks distinguish API process health, control-plane availability, and tenant dependency health; failure is surfaced without reporting an unhealthy dependency as ready.
+      - Local Prometheus successfully scrapes the application and exposes actionable signals for HTTP latency/error rates, DB/control/tenant health, pool saturation/provisioning failures, and backup freshness or a corresponding deterministic check.
+      - Metrics and logs contain no credentials, email, school-user identifiers, exam content, answers, or high-cardinality tenant/student labels; Prometheus remains bound to loopback and services remain local-only.
+      - A concise pilot runbook gives pass/fail checks, threshold/action guidance, safe restart steps, backup freshness verification, and escalation/blocker recording in update.md.
+      - Induced local dependency failure and recovery are detected and reported accurately without cross-tenant health leakage or accidental data mutation.
+    handoff:
+      constraints:
+        - Do not expose Prometheus or internal application/database ports outside localhost/local Compose networks.
+        - Do not add a cloud monitoring service, hosted dashboard, or telemetry egress.
+        - Keep metrics low-cardinality and do not add tenant identity, student identity, email, or exam data as metric labels.
+      relevant_context:
+        - server/observability.js and server/index.js already expose prom-client metrics at /metrics; docker-compose.yml publishes Prometheus only on 127.0.0.1:9090.
+        - prometheus.yml currently scrapes only api:3000 and uses a 5-second interval; there is no existing tenant-aware pilot dashboard/runbook in scripts/.
+      high_risk_signals: [architecture, security_sensitive, shared_state]
+      critic_signals: [architecture]
+
+  - id: migrate-imbs-copy-and-preserve-legacy
+    title: Onboard an IMBS data copy without risking the current database
+    description: >-
+      [reuse the tested backup/restore process and existing IMBS source; perform a
+      copy-first migration] Provision an IMBS tenant database from a verified copy of
+      the current local school database and media, apply only required forward
+      migrations, register it through the control plane, and validate it through the
+      real application. Obtain an authorized mapping for existing accounts that need
+      email login; never fabricate addresses or credentials. Keep the original
+      database and volumes intact and retain a tested rollback path. If the mapping,
+      backup, or parity checks are unavailable, stop before registry cutover and leave
+      the legacy instance unchanged.
+    wave: 6
+    depends_on: [independent-security-and-runtime-acceptance]
+    agent: gem-implementer
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - A fresh verified recovery point for the source database and media exists before copy/migration, and the original database and volumes remain available and unchanged throughout.
+      - The IMBS tenant is a separate database with the approved school code and only authorized account email mappings; no identity, password, or missing data is invented.
+      - Source and tenant copies match table-by-table row counts, relevant foreign-key/integrity checks, and media file hashes; schema version is recorded and email-login migration has no unresolved rows.
+      - Owner, teacher, student login and representative CBT workflows work against the IMBS tenant; no request silently falls back to the legacy source database.
+      - Registry cutover occurs only after parity and operator confirmation; otherwise the task reports the exact missing mapping/check and leaves the existing runtime/data untouched.
+      - Rollback instructions are exercised against the isolated restore copy, and results/progress are recorded in update.md.
+    handoff:
+      constraints:
+        - Copy-first only. Never drop, truncate, overwrite, or modify the existing cbt_imbs database or its media volume.
+        - Do not cut over on unverified backups, incomplete email mappings, row-count/integrity differences, or unresolved media mismatches.
+        - Attempt actual IMBS migration only after independent disposable-tenant acceptance passes and authorized account-email mappings plus safe migration prerequisites are available; otherwise stop without source mutation.
+        - Keep the default tenant flag off until the final gate; do not interpret copy validation as authorization for destructive source retirement.
+        - Stop and report a precise blocker rather than inventing account/contact data.
+      relevant_context:
+        - Gate 1 notes say the existing local users do not yet have email as the login identity; the tenant design requires school code plus email and password.
+        - docs/plan/2026-10-12-saas-readiness/gate1-architecture.md documents IMBS copy migration, media parity, login/CBT checks, and keeping the source until verification.
+        - Current source data and media must be treated as user data; prior baseline counts in update.md are historical and must be remeasured.
+      high_risk_signals: [contract_change, data_flow_change, migration, security_sensitive, shared_state, cross_domain_impact]
+      critic_signals: [architecture, cross_domain_impact]
+
+  - id: independent-security-and-runtime-acceptance
+    title: Independently verify tenant isolation and the local user journeys
+    description: >-
+      [independent verification; do not rely on implementation claims] Against the
+      local Docker stack and disposable local test tenants, review tenant auth/session,
+      every route family, media resolution, platform-owner authorization, provisioning
+      cleanup, secrets, Compose exposure, backup/restore evidence, and monitoring.
+      Create two locally isolated test tenants with deliberately similar records and
+      prove negative as well as positive API/browser behavior. Exercise onboarding
+      from the owner panel through actual DB creation and the school-admin login/CBT
+      path independently of IMBS account mapping or migration. Report every check
+      pass/fail/not performed and block activation on any critical/high finding or
+      incomplete isolation evidence; this acceptance must complete before IMBS
+      migration is attempted.
+    wave: 5
+    depends_on: [implement-local-backup-restore-and-runbook, implement-local-pilot-monitoring]
+    agent: gem-reviewer
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - Two disposable local tenants have distinct database identities and test records; attempts to cross-read/write/delete records or media by changing URL, ID, header, body, cookie/session, or role are rejected and leave the other tenant unchanged.
+      - Unknown, suspended, expired, unreachable, malformed, and secret-provider-failure cases fail closed and never reach a different tenant or the legacy database.
+      - Platform owner, school admin, teacher, and student access boundaries are verified; one-time onboarding access is not reusable or present in logs.
+      - Browser/runtime test verifies owner-session cookie security attributes (HttpOnly, Secure when HTTPS is used, SameSite, path, and expiry) and rejects authenticated mutations without valid CSRF evidence or from a disallowed origin, confirming no rejected request changed state.
+      - Browser/runtime test covers owner login, real onboarding/provisioning, tenant listing/health, school-admin login, exam-related read/write smoke paths, logout/session expiry, and visible error states against the local stack.
+      - Negative authentication tests prove built-in/default demo owner credentials fail in every production-like configuration, including TENANCY_ENABLED=false.
+      - Injected provisioning failures, including cleanup failure, leave durable partial-state/resource inventory and audit evidence; independent idempotent reconciliation tests recover or clean the operation, and unresolved partial operations block activation.
+      - Backup restore drill, health/metrics/Prometheus, service restart persistence, and localhost-only exposure are independently confirmed.
+      - Acceptance uses only disposable local tenants and completes without depending on IMBS account-email mappings, source migration, or IMBS data parity.
+      - Independent review has no unresolved critical/high security, isolation, or architecture findings; every test is recorded pass/fail/not performed with evidence in update.md.
+    handoff:
+      constraints:
+        - Use disposable local test tenants/data only; no cloud accounts, external systems, or real student records in isolation tests.
+        - Do not capture or report credentials, keys, tokens, or one-time admin access material.
+        - Treat any unknown route, tenant-context bypass, cross-tenant response, untested sensitive path, or unexplained failure as a blocking finding.
+        - Do not activate the primary local tenant deployment as part of this review task.
+        - Complete this independent acceptance before attempting the IMBS migration; do not use IMBS records as disposable-tenant test data.
+      relevant_context:
+        - Existing tests cover tenant router, registry, database context/runtime, provisioner, and platform management, but do not prove runtime route coverage or actual UI onboarding.
+        - The local app is served by Nginx/API/PostgreSQL Compose and Prometheus; the target acceptance includes both HTTP/API boundaries and browser workflow.
+      high_risk_signals: [architecture, contract_change, auth_change, data_flow_change, migration, security_sensitive, shared_state, cross_domain_impact]
+      critic_signals: [architecture, cross_domain_impact]
+
+  - id: gated-local-activation-and-pilot-operations
+    title: Activate locally only after all readiness gates pass
+    description: >-
+      [reuse validated local Compose configuration and operating runbooks] Recheck
+      this PC's Docker/runtime, required secret files/permissions, distinct control
+      database, tenant secret resolution, verified backup/restore, source-copy parity,
+      owner authentication, two-tenant isolation review, monitoring, and local ports.
+      Require successful independent disposable-tenant acceptance and successful
+      IMBS migration/data parity, in addition to every other gate. Only if every
+      gate passes, enable tenant mode for the intended local stack,
+      restart in a controlled window, and verify health, owner panel, actual school
+      onboarding, tenant-bound login, and restart persistence. If any prerequisite or
+      account mapping is blocked, keep TENANCY_ENABLED=false, preserve the current
+      working legacy stack, and report the exact blocker and safe local work completed.
+      Record a local pilot checklist and all results in update.md; make no cloud changes.
+    wave: 7
+    depends_on: [independent-security-and-runtime-acceptance, migrate-imbs-copy-and-preserve-legacy]
+    agent: gem-devops
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - A signed-off evidence checklist confirms distinct/reachable control-plane DB, valid protected master-key file, owner-only access, default/demo owner-credential rejection even with TENANCY_ENABLED=false, secure session-cookie and CSRF tests, tested restore, two-tenant isolation, real provisioning, monitoring, zero unresolved failed/partial provisioning operations, and no unresolved critical/high findings before the flag can change.
+      - Both independent disposable-tenant acceptance and IMBS copy migration/data parity have explicit successful evidence; neither result substitutes for the other.
+      - If all gates pass, tenant mode is enabled only in the intended local deployment, the actual Compose stack starts healthy, and owner onboarding, school-code/email login, tenant-specific application requests, and restart persistence pass on this PC.
+      - If any gate fails or Windows/Docker/configuration/data prerequisites are missing, TENANCY_ENABLED remains false for the primary stack, no unsafe cutover occurs, and the exact blocking command/check/file requirement is recorded without secret values.
+      - All application, PostgreSQL, Prometheus, backups, and test data remain local; no AWS/cloud resource, transfer, or deployment is used.
+      - update.md contains a dated operator pilot checklist, tested backup/restore and monitoring evidence, final tenant-mode state, rollback steps, known limits, and an explicit statement that production readiness is not claimed if any gate remains open.
+    handoff:
+      constraints:
+        - Never enable tenant mode based only on non-empty environment variables; require runtime connectivity, secret resolution, protected key file, distinct control DB, backup/restore, data parity, and isolation evidence.
+        - Do not expose credentials, use demo authentication, delete the legacy source database, or overwrite user data.
+        - No AWS or other cloud deployment or service is in scope.
+        - Do not claim production readiness, capacity, or external-school readiness from local smoke tests alone.
+      relevant_context:
+        - scripts/validate-tenant-env.mjs currently reports safe legacy mode when tenancy is off and checks required values when on; actual DB/key/runtime/backup/isolation gates must additionally be proven.
+        - Current Compose provides local-only Prometheus on 127.0.0.1:9090; verify all final host bindings and Windows firewall exposure before activation.
+        - Gate 1 capacity evidence is historical and does not establish the requested production/load envelope; privacy/legal review and account mapping can remain explicit blockers.
+      high_risk_signals: [architecture, contract_change, auth_change, data_flow_change, migration, security_sensitive, shared_state, cross_domain_impact]
+      critic_signals: [architecture, cross_domain_impact]

@@ -1,0 +1,269 @@
+plan_id: 2026-10-10-deploy-cbt-aws
+status: pending
+tldr: |
+  Plan an isolated CBT IMBS deployment to the existing Sydney EC2 instance while
+  preserving the school LAN stack. Source preparation requires content-level secret
+  scanning and an exact hashed manifest. The private S3 transfer is complete and the
+  EC2 archive checksum matches; the temporary S3 object and bucket are deleted.
+  SSH is limited to the user's /32 and AWS's regional EC2 Instance Connect prefix list,
+  never 0.0.0.0/0. Review remains blocked until every attached security group is
+  verified; reconfirm the currently matched user /32 immediately before deployment.
+created_at: "2026-10-10"
+created_by: gem-planner
+revision: 2
+replan_count: 1
+planner_revision_used: true
+
+tasks:
+  - id: prepare-aws-package
+    title: Prepare and scan the isolated AWS source artifact
+    description: >-
+      [reuse the existing Compose app and add only deployment-specific configuration]
+      Create AWS-only Compose, Nginx, and Caddy configuration without editing the
+      school LAN deployment. Caddy terminates public HTTPS and proxies to the app on
+      the private Compose network; AWS Nginx serves the frontend and proxies /api
+      without publishing the API port. Publish only edge ports 80 and 443 and use
+      independent persistent volumes. Build the source archive using an explicit
+      archive exclusion policy; .dockerignore is not the archive policy. Exclude all
+      .git directories and history, all .env variants and credential/key/token files,
+      backups and database dumps, installed dependency trees, generated build output,
+      caches, logs, temporary files, and generated certificates. Extract the exact
+      archive to a clean staging directory and run Gitleaks in filesystem/no-git mode
+      before any transfer. Record the scanner version, invocation, exit status, and a
+      redacted report. Produce an exhaustive sorted path-and-SHA-256 manifest of the
+      exact archive contents and the archive SHA-256 under docs/plan/2026-10-10-deploy-cbt-aws/.
+      Any secret finding must be removed or excluded, then the archive rebuilt and
+      rescanned. Do not transfer this task's artifact.
+    wave: 1
+    depends_on: []
+    agent: gem-devops
+    status: completed
+    retries_used: 1
+    acceptance_criteria:
+      - Dedicated AWS deployment files exist and the school LAN Compose, Nginx, and environment configuration are unchanged.
+      - AWS Compose validation succeeds and shows only host ports 80 and 443 published; PostgreSQL, API, and Prometheus have no public host binding.
+      - The archive is created with an explicit policy that excludes .git/history, all .env variants and secrets, backups/database dumps, dependencies, generated/build/cache/log/temp files, and generated certificates; .dockerignore is not relied on.
+      - Gitleaks scans a clean extraction of the exact archive in filesystem/no-git mode before transfer; its version, invocation, exit status, and redacted zero-finding report are retained, or the artifact is rebuilt and rescanned after any finding.
+      - An exhaustive sorted manifest records every archived path and its SHA-256, together with the archive SHA-256; the manifest matches the exact archive and contains no file contents or secrets.
+      - The hostname assumption is documented as free nip.io mapping to the instance's current public IPv4; no paid domain, DNS updater, or paid resource is assumed.
+    handoff:
+      constraints:
+        - Preserve the existing school LAN deployment and its configuration; keep every AWS-specific change separate.
+        - Never transfer local .env files, database contents/dumps, credentials, private keys, or tokens.
+        - Restrict SSH to the user's current My IP /32 and AWS's regional EC2 Instance Connect prefix list; never allow SSH from 0.0.0.0/0 or use public source hosting as a transfer workaround.
+        - This task prepares and scans locally only; do not transfer the artifact.
+        - Never include local .env files, credentials, private keys, database contents/dumps, or tokens.
+        - Treat the explicit archive policy as authoritative; .dockerignore does not define archive contents.
+        - If Gitleaks is unavailable or reports an unresolved finding, stop before transfer and report the blocker.
+      relevant_context:
+        - Workspace is E:\CBT IMBS; the previously claimed F:\cbt-imbs-source.tar.gz transfer has not been verified.
+        - docker-compose.yml binds the LAN frontend at 10.10.4.235:8080/8443, defaults public origins to https://10.10.4.235:8443, and publishes Prometheus only on 127.0.0.1:9090.
+        - nginx.conf redirects to https://$host:8443 and terminates self-signed TLS; docker/nginx-entrypoint.sh generates a self-signed certificate when no matching certificate exists.
+        - .dockerignore excludes .env files, node_modules, dist, and .git, but not backups/ or database dump files; package.json has build and test scripts.
+        - Existing EC2: cbt-imbs-test, ap-southeast-2, Ubuntu 24.04, t3.small, 20 GiB root disk; Docker Engine/Compose installed, running, and 3/3 checks passed.
+        - Local PowerShell SSH timed out; EC2 Instance Connect in the AWS console worked, and the user handles browser-console/EC2 Connect steps.
+        - The free nip.io hostname assumption maps to the instance's current public IPv4; no paid domain, DNS updater, or paid resource is assumed.
+        - 'User-provided EC2 terminal screenshot on 2026-10-10 shows the private S3 presigned-URL download completed and `sha256sum -c` returned OK for /tmp/cbt-imbs-aws-source.zip; SHA-256 is a15b85e077d3d1e09d91abcc6d5cedae2228981ec01e4803bb8e2c34b274f5d2.'
+        - User confirmed on 2026-10-10 that the temporary S3 ZIP object and its bucket were deleted; the verified archive remains on EC2 at /tmp/cbt-imbs-aws-source.zip.
+        - Gitleaks 8.30.1 scanned the clean extraction in no-git mode with full redaction; exit status 0 and zero findings. Evidence, report, exact manifest, and checksum are retained in this plan directory.
+        - The earlier statement that no private transfer method was validated is superseded by the verified private S3 transfer; the exact current security-group rules still require confirmation.
+      high_risk_signals: [architecture, security_sensitive, data_flow_change, shared_state, cross_domain_impact]
+      critic_signals: [architecture, cross_domain_impact]
+
+  - id: transfer-private-artifact
+    title: Verify the user-provided private artifact on EC2
+    description: >-
+      The prepared and scanned artifact was transferred to EC2 through the private
+      S3 presigned-URL route selected by the user. Verify its on-instance SHA-256
+      against the retained local manifest, confirm the route was private, and confirm
+      temporary S3 objects are removed. Do not use public hosting or broaden SSH
+      beyond the approved My IP /32 and regional EC2 Instance Connect prefix list.
+    wave: 2
+    depends_on: [prepare-aws-package]
+    agent: gem-devops
+    status: completed
+    retries_used: 0
+    acceptance_criteria:
+      - The user has provided the exact artifact on EC2 through a user-selected private transfer route; no unvalidated upload method is invented or initiated by the executor.
+      - The on-instance artifact SHA-256 exactly matches the locally prepared and scanned archive and manifest, and the expected artifact path is recorded without secrets.
+      - Non-secret evidence confirms the route was private and the temporary S3 object and bucket were removed; SSH was not opened to 0.0.0.0/0.
+      - If artifact identity, checksum, or private-transfer evidence is missing, this task remains blocked and no deployment begins.
+    handoff:
+      constraints:
+        - This task verifies artifact transfer only; do not execute deployment.
+        - Do not use public file hosting, expose signed URLs, or place credentials/tokens in chat or logs.
+        - Do not claim transfer is verified from the previously asserted F:\cbt-imbs-source.tar.gz; its creation, contents, and transfer are unverified.
+      relevant_context:
+        - EC2 Instance Connect browser shell works; local PowerShell SSH previously timed out even from a hotspot.
+        - User-provided EC2 evidence verifies the local archive SHA-256, and the user confirmed deletion of the temporary private S3 object and bucket.
+        - User authorized revising the plan to allow the AWS-managed regional EC2 Instance Connect prefix list alongside the user's My IP /32; public SSH from 0.0.0.0/0 remains prohibited.
+      high_risk_signals: [architecture, security_sensitive, data_flow_change, shared_state, cross_domain_impact]
+      critic_signals: [architecture, cross_domain_impact]
+
+  - id: review-aws-boundaries
+    title: Review AWS configuration and data boundaries before deployment
+    description: >-
+      [independent security/architecture review of the exact transferred artifact]
+      Inspect AWS Compose and edge configuration, the exact archive manifest and
+      matching local/EC2 checksums, the redacted Gitleaks evidence, intended network
+      rules, and secret/volume setup. Verify the AWS project and volumes cannot attach
+      to or mutate the LAN database; PostgreSQL/API/Prometheus are not directly
+      exposed; SSH is limited to the user's My IP /32 and AWS's regional EC2 Instance
+      Connect prefix list; and public app traffic reaches the API only through the
+      HTTPS edge. Approve deployment only when all evidence is complete
+      and findings are resolved; otherwise return exact blockers. This is a read-only
+      gate and does not deploy.
+    wave: 3
+    depends_on: [prepare-aws-package, transfer-private-artifact]
+    agent: gem-reviewer
+    status: blocked
+    retries_used: 0
+    acceptance_criteria:
+      - Review evidence confirms the AWS deployment is isolated from the LAN Compose project, database volume, and configuration.
+      - Exact manifest, matching local/EC2 archive checksums, and a redacted clean Gitleaks scan are reviewed; no credential, private key, token, dump, or backup is present in the artifact or deployment files.
+      - Network exposure is limited to public HTTP/HTTPS, SSH from the user's My IP /32 and AWS's regional EC2 Instance Connect prefix list, and private container-network services; SSH is never open to 0.0.0.0/0 and no critical/high security or architecture findings remain before deployment.
+      - Any unresolved blocker is returned with a specific file, rule, or console action, and deployment does not proceed.
+    handoff:
+      constraints:
+        - This is a read-only gate; do not deploy, change AWS resources, or modify application files.
+        - Treat missing user-provided private transfer evidence, mismatched checksums, incomplete manifest/scan evidence, isolation gaps, or ingress uncertainty as blockers.
+      relevant_context:
+        - Caddy is the proposed public TLS edge; AWS-specific Nginx serves the frontend and proxies /api internally.
+        - Current rules for every security group attached to the EC2 instance have not been rechecked; require complete inbound/outbound rule evidence before approval.
+        - Independent review must examine the exact artifact present on EC2, not only a filename list or .dockerignore.
+        - The AWS deployment must use independent persistent volumes and must not import the school LAN database or either existing database backup.
+        - Latest independent re-review accepts the authorized SSH policy: TCP/22 from the user's current My IP /32 and AWS-managed prefix list com.amazonaws.ap-southeast-2.ec2-instance-connect only; 0.0.0.0/0 SSH remains prohibited. AWS Builder ID signed-in-device evidence shows 103.28.113.201, matching the security-group rule 103.28.113.201/32; earlier evidence recorded 103.28.131.201/32, so reconfirm immediately before deployment. Review remains BLOCKED until the instance's complete attached security-group inventory and each group's full rules are provided. One screenshot shows all-protocol/all-port IPv4 egress to 0.0.0.0/0; assess whether that broad egress is required. Reviewer also noted `prom/prometheus:latest` as a reproducibility warning. The user reports Builder ID authentication is via Google; the integrated AWS tab still shows a classic IAM sign-in error.
+        - User-provided URL https://us-east-1.sso.signin.aws/ was opened and returned AWS 404. The shared Google sign-in page then reported that the integrated browser does not support JavaScript and rejected authentication. Its OAuth callback uses host us-east-1.signin.aws, but that callback is not confirmed as the portal URL; do not reuse it or add speculative hosts to the allowlist. Use the user's regular browser session where Google/Builder ID already works, then share the authenticated AWS console tab or provide redacted console evidence.
+      high_risk_signals: [architecture, security_sensitive, data_flow_change, shared_state, cross_domain_impact]
+      critic_signals: [architecture, cross_domain_impact]
+
+  - id: deploy-aws
+    title: Configure secure runtime and deploy the AWS stack
+    description: >-
+      [reuse the running EC2 instance and existing app containers; no second server]
+      On cbt-imbs-test, create a unique AWS Compose project and persistent named
+      volumes for the fresh PostgreSQL database, question-media uploads, and Caddy
+      ACME state. Generate strong DB, session, and initial seed-account passwords
+      directly on EC2; store them in an owner-only runtime env file with mode 0600,
+      never print or transfer them, and disable/rotate the built-in demo defaults.
+      Configure the current-public-IPv4 nip.io hostname, HTTPS origins, and COOKIE_SECURE.
+      After secrets and volume persistence are verified, allow inbound 80/443 for the
+      public web edge while retaining SSH only from the user's My IP /32 and AWS's
+      regional EC2 Instance Connect prefix list; never allow public SSH or 5432/3000/9090.
+      Start the stack, confirm container health and persistent-volume attachment, and
+      capture AWS instance, disk, address, security-group, budget, and current cost
+      state. Do not import LAN data or dumps.
+    wave: 4
+    depends_on: [review-aws-boundaries]
+    agent: gem-devops
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - Runtime secrets are generated on EC2, stored owner-only with mode 0600, absent from source/archive/logs, and no built-in demo password remains active.
+      - A fresh, isolated AWS PostgreSQL volume and upload volume are attached; Caddy certificate/config state is persistent; no LAN dump or backup is imported.
+      - Inbound rules expose only 80/443 publicly and SSH only from the user's My IP /32 and AWS's regional EC2 Instance Connect prefix list; SSH is never open to 0.0.0.0/0, and ports 5432, 3000, and 9090 are not publicly reachable or host-published.
+      - All required containers are running/healthy, the API health endpoint succeeds, and a stop/start or container recreation check confirms database and upload volumes persist without affecting the LAN deployment.
+      - Caddy obtains a publicly trusted certificate for the current nip.io hostname and redirects HTTP to HTTPS; the runtime public origin and secure-cookie setting match that hostname.
+      - The deployment record captures EC2 running/check state, public IPv4/hostname, root disk, security-group exposure, budget threshold/current cost evidence, and any resource or cost change; no unverified public URL is reported as available.
+    handoff:
+      constraints:
+        - Do not proceed unless the independent review task approves the exact deployment configuration and transfer artifact.
+        - Do not request or print secrets, private keys, passwords, MFA codes, or tokens; keep bootstrap credentials available only through the user's secure EC2 console path.
+        - Do not stop or alter the existing school LAN deployment or its volumes.
+        - If hostname resolution, certificate issuance, or transfer fails, leave public access unclaimed and report the failed prerequisite and AWS state.
+      relevant_context:
+        - Current AWS budget is cbt-imbs-test-monthly at $30/month with an alert at 80% actual; verify the current amount rather than estimating it.
+        - API health path is /api/health; login surface is served by the frontend and login endpoint is POST /api/auth/login.
+        - server/index.js seeds admin/guru accounts with admin123/guru123 fallbacks unless secure seed passwords are configured; configure rotation and do not disclose bootstrap values.
+        - The current EC2 public IPv4 is not reserved; the nip.io URL changes if that address changes after stop/start. Do not allocate a paid domain or unapproved billable resource.
+      high_risk_signals: [architecture, security_sensitive, data_flow_change, shared_state, cross_domain_impact]
+      critic_signals: [architecture, cross_domain_impact]
+
+  - id: verify-aws-deployment
+    title: Independently verify external HTTPS and login surface
+    description: >-
+      [independent browser/runtime verification after deployment]
+      From outside the EC2 host/network, resolve and open the reported nip.io URL.
+      Verify trusted HTTPS certificate and hostname, HTTP-to-HTTPS redirect, frontend
+      login form, same-origin API routing/health, and absence of browser certificate
+      or mixed-content failures. Reconfirm container health and network exposure from
+      the deployment evidence. Do not submit or record credentials. Report each check
+      as pass, fail, or not performed; only publish the URL as the current access path
+      after DNS, TLS, and external reachability all pass.
+    wave: 5
+    depends_on: [deploy-aws]
+    agent: gem-browser-tester
+    status: pending
+    retries_used: 0
+    acceptance_criteria:
+      - An external browser resolves the current hostname to the EC2 public IPv4 and opens the app over HTTPS with a trusted certificate valid for that hostname.
+      - HTTP redirects to HTTPS, the login surface renders, and same-origin API health succeeds without mixed-content or certificate errors.
+      - Container/network evidence confirms the deployment remains healthy and PostgreSQL/API/Prometheus/SSH are not broadly exposed.
+      - The final report states current URL and deployment state only if DNS, TLS, and external access passed; it lists every unperformed test and current AWS resource/budget/cost state.
+      - Remaining limitations include the nip.io third-party dependency, hostname/IP change after instance public-IP reassignment, no migrated LAN data, and any untested authenticated login or exam workflow.
+    handoff:
+      constraints:
+        - Do not enter, request, capture, or report any password, credential, private key, MFA code, or token.
+        - Do not describe the deployment as production-ready or claim exam workflow/data validation unless those tests were actually performed.
+        - If the external check fails, report the URL as unavailable and identify the failed DNS, TLS, ingress, or app-health condition.
+      relevant_context:
+        - This is a fresh AWS deployment and must remain separate from the school LAN stack.
+        - Public URL strategy is nip.io based on the EC2 public IPv4, with Caddy-managed ACME HTTPS; no paid domain is purchased.
+        - Required checks are container health, application health, HTTPS, login surface, and a truly external access check.
+      high_risk_signals: [architecture, security_sensitive, data_flow_change, shared_state, cross_domain_impact]
+      critic_signals: [architecture, cross_domain_impact]
+
+baseline:
+  objective: >-
+    Transfer and deploy existing CBT IMBS Docker Compose application to the already-provisioned AWS EC2 Ubuntu 24.04 t3.small instance, then report the current access URL and deployment state.
+  acceptance_criteria:
+    - Preserve school LAN config.
+    - Transfer source excluding secrets, .git/history, backups/db dumps, dependencies/generated/cache/logs.
+    - Verify artifact content for secrets before transfer.
+    - Deploy securely and privately.
+    - HTTPS with no-purchase hostname.
+    - Verify DNS/TLS/app before claiming URL.
+    - Concise access and cost state.
+  captured_at: "2026-10-10"
+
+decisions:
+  - Keep the supplied objective and acceptance criteria immutable; source preparation is complete, the transferred artifact checksum is verified, and no application deployment has begun.
+  - The exact archive was transferred from a private S3 bucket with a presigned URL, verified on EC2 against the local SHA-256, and the temporary S3 object and bucket were deleted.
+  - User explicitly authorized revising SSH ingress to allow only the user's My IP /32 and AWS's regional EC2 Instance Connect prefix list; public SSH from 0.0.0.0/0 remains prohibited.
+  - A deployment start was requested on 2026-10-10, but no AWS changes were made because the AWS console is blocked by the active network domain policy and complete evidence for all instance-attached security groups is unavailable.
+  - Require Gitleaks content scanning of the exact archive and an exhaustive path/hash manifest before transfer; .dockerignore is not archive policy.
+  - Require independent review of the exact EC2 artifact and deployment boundaries before deployment.
+
+assumptions:
+  - The EC2 archive remains at /tmp/cbt-imbs-aws-source.zip after the temporary S3 transfer object and bucket were deleted.
+  - Existing instance details, free nip.io hostname strategy, school LAN configuration, and budget alert remain as supplied in planning context and must be revalidated before deployment.
+
+replan:
+  reason: >-
+    Blocking critic findings showed that the prior plan did not define an executable
+    private transfer path, relied on archive inventory rather than content-level
+    secret scanning, and omitted .git/history plus generated/cache/log exclusions.
+    No validated private route is present in context, so planning now stops at an
+    explicit user-provided verified-artifact prerequisite rather than inventing one.
+  changed_tasks: [prepare-aws-package, review-aws-boundaries, deploy-aws, verify-aws-deployment]
+  added_tasks: [transfer-private-artifact]
+  removed_tasks: []
+  preserved_acceptance_criteria:
+    - Preserve school LAN config.
+    - Transfer source excluding secrets, .git/history, backups/db dumps, dependencies/generated/cache/logs.
+    - Verify artifact content for secrets before transfer.
+    - Deploy securely and privately.
+    - HTTPS with no-purchase hostname.
+    - Verify DNS/TLS/app before claiming URL.
+    - Concise access and cost state.
+  new_risks:
+    - The user's current My IP /32 and the complete set of security groups attached to the instance must be verified before deployment; approved SSH sources are limited to that /32 and the AWS-managed regional EC2 Instance Connect prefix list.
+  progress_signal: >-
+    Source preparation and private transfer verification are complete, and temporary S3 cleanup is confirmed.
+    Deployment has not begun; the EIC SSH prefix list is now explicitly authorized.
+    Independent review remains blocked until all instance-attached security groups and
+    the current user My IP /32 are verified.
+  revised_tasks: [prepare-aws-package, transfer-private-artifact, review-aws-boundaries, deploy-aws, verify-aws-deployment]
+  invalidated_tasks: []
+  invalidated_assumptions:
+    - The earlier generic temporary-transfer-path language implied a route without evidence that one was available.
