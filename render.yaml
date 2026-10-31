@@ -17,6 +17,12 @@ services:
         value: 10000
       - key: SESSION_SECRET
         generateValue: true
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: PUBLIC_BASE_URL
+        value: https://cbt-imbs.onrender.com
+      - key: CORS_ORIGINS
+        value: https://cbt-imbs.onrender.com
       - key: DB_HOST
         fromDatabase:
           name: cbt-imbs-db
