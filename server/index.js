@@ -37,6 +37,9 @@ import { calculateItemDifficulty } from './itemAnalysis.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
+
+// Serve static files from the React build FIRST (before any other middleware)
+app.use(express.static(path.resolve(__dirname, '../dist')));
 const tenancyEnabled = process.env.TENANCY_ENABLED === 'true';
 const controlPlaneRuntime = tenancyEnabled
   ? await createTenantRuntimeFromEnvironment()
@@ -1983,15 +1986,12 @@ if(!tenantRuntime){
   const settingsAtStartup=await pool.query('SELECT violation_threshold FROM school_settings WHERE id=1');
   defaultViolationThreshold=Number(settingsAtStartup.rows[0]?.violation_threshold||2);
 }
-// Serve static files from the React build (for Render single-container deployment)
-app.use(express.static(path.resolve(__dirname, '../dist')));
-
 // Catch-all handler: serve index.html for SPA routes only (not /api/ or static assets)
 app.use((req, res, next) => {
   // Skip API routes
   if (req.path.startsWith('/api/')) return next();
   // Skip static asset files - let express.static handle them (returns 404 if not found)
-  if (/\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|json|webp)$/i.test(req.path)) return next();
+  if (req.path.includes('.')) return next();
   // Serve index.html for all other routes (React Router SPA)
   res.sendFile(path.resolve(__dirname, '../dist/index.html'));
 });
