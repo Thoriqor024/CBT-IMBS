@@ -182,7 +182,7 @@ function BankQuestionEditor({ type, index, question, stimuli = [], onChange }) {
   </article>;
 }
 
-export function QuestionList({ bank, questions, onAdd, onUploadMedia, onDeleteMedia }) {
+export function QuestionList({ bank, questions, onAdd, onUploadMedia, onDeleteMedia, onDeleteQuestion }) {
   const [visibleQuestions, setVisibleQuestions] = useState(questions);
   const [stimuli, setStimuli] = useState([]);
   const [managingStimuli, setManagingStimuli] = useState(false);
@@ -249,6 +249,7 @@ export function QuestionList({ bank, questions, onAdd, onUploadMedia, onDeleteMe
           {stimulusTitle && <span className="question-stimulus-badge" title="Terhubung ke cerita/wacana"><BookOpen size={11} /> {stimulusTitle}</span>}
           <b>{formatPoints(question.points)} poin</b>
           <button type="button" className="row-action" title={locked ? 'Bank sudah memiliki ujian' : 'Edit soal'} aria-label={'Edit soal ' + (index + 1)} disabled={locked} onClick={() => { setEditError(''); setEditingQuestion(question); }}><Pencil size={14}/></button>
+          <button type="button" className="row-action delete-action" title={locked ? 'Bank sudah memiliki ujian' : 'Hapus soal'} aria-label={'Hapus soal ' + (index + 1)} disabled={locked} onClick={() => onDeleteQuestion(question)}><Trash2 size={14}/></button>
         </div>
         <p dir="auto"><FormulaText>{question.prompt}</FormulaText></p>
         <QuestionImageActions question={question} locked={locked} onUpload={onUploadMedia} onDelete={onDeleteMedia}/>

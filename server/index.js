@@ -1181,6 +1181,23 @@ app.put('/api/questions/:questionId',allow('admin','teacher'),asyncRoute(async(r
     res.json({ok:true});
   }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}finally{client.release();}
 }));
+app.delete('/api/questions/:questionId',allow('admin','teacher'),asyncRoute(async(req,res)=>{
+  const client=await pool.connect();let mediaFiles=[];
+  try{
+    await client.query('BEGIN');
+    const question=await client.query('SELECT q.id,q.type,q.bank_id,b.topic FROM questions q JOIN question_banks b ON b.id=q.bank_id WHERE q.id=$1 FOR UPDATE OF b',[req.params.questionId]);
+    if(!question.rowCount){await client.query('ROLLBACK');return res.status(404).json({error:'Soal tidak ditemukan.'});}
+    const row=question.rows[0];
+    if(req.session.user.role==='teacher'&&!await teacherCanAccessBank(req.session.user.id,row.bank_id,client)){await client.query('ROLLBACK');return res.status(404).json({error:'Soal tidak ditemukan.'});}
+    if((await client.query('SELECT 1 FROM exams WHERE bank_id=$1 LIMIT 1',[row.bank_id])).rowCount){await client.query('ROLLBACK');return res.status(409).json({error:'Soal pada bank yang sudah memiliki ujian tidak dapat dihapus.'});}
+    mediaFiles=(await client.query('SELECT file_key FROM question_media WHERE question_id=$1',[row.id])).rows.map(item=>item.file_key);
+    await client.query('DELETE FROM questions WHERE id=$1',[row.id]);
+    await audit(client,req.session.user.id,'question.delete',{questionId:row.id,bankId:row.bank_id,type:row.type});
+    await client.query('COMMIT');
+  }catch(error){await client.query('ROLLBACK').catch(()=>{});throw error;}finally{client.release();}
+  await Promise.allSettled(mediaFiles.map(removeMediaFile));
+  res.json({ok:true});
+}));
 app.post('/api/questions/:questionId/media',allow('admin','teacher'),uploadQuestionImage,asyncRoute(async(req,res)=>{
   if(!req.file)return res.status(400).json({error:'Pilih satu gambar untuk diunggah.'});
   const altText=String(req.body?.altText||'').trim();

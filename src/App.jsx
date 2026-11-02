@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import readXlsxFile from 'read-excel-file/browser';
 import { exportResults } from './resultsExport.js';
 import { exportItemAnalysis } from './itemAnalysisExport.js';
+import { exportQuestionBank } from './questionBankExport.js';
 import { LayoutDashboard, BookOpen, Users, ClipboardList, Database, ChartNoAxesColumn, BarChart3, Settings, Search, Bell, Plus, ChevronDown, MoreHorizontal, ArrowUpRight, Clock3, CircleCheck, CircleAlert, Sparkles, FileSpreadsheet, Shuffle, ChevronRight, X, Menu, GraduationCap, BookMarked, CalendarDays, Layers3, Check, Download, Upload, Eye, Trash2, ShieldCheck, Scale, Wifi, CircleHelp, LogOut, KeyRound, Play, Pause, LockKeyhole, RefreshCw, Pencil, Copy } from 'lucide-react';
 import { api } from './api';
 import { getInitialSchoolCode, saveLastSchoolCode } from './tenantDiscovery.js';
@@ -83,9 +84,11 @@ export default function App(){
   const deleteTeacher=async teacher=>{if(!window.confirm(`Hapus akun guru ${teacher.name} (${teacher.username})? Akses login akan dicabut. Data soal, ujian, jawaban, dan nilai tetap disimpan. Tindakan ini tidak dapat dibatalkan.`))return;const result=await run(()=>api(`/teachers/${teacher.id}`,{method:'DELETE'}));if(result){setTeacherList(current=>current.filter(item=>String(item.id)!==String(teacher.id)));notify('Akun guru dihapus dan seluruh sesi login dicabut.');}};
   const saveSubject=async subject=>{const result=await run(()=>api('/subjects',{method:'POST',body:JSON.stringify(subject)}));if(result){await loadAll();setBankForm(form=>({...form,subjectId:String(result.id)}));setSubjectToEdit(null);setModal(subjectReturnModal);notify('Mata pelajaran ditambahkan.');}};
   const openQuestions=async bank=>{setSelectedBank(bank);const result=await run(()=>api('/banks/'+bank.id+'/questions'));if(result){setQuestions(result);setModal('questions');}};
+  const exportBank=async bank=>{const result=await run(()=>api('/banks/'+bank.id+'/questions'));if(result)exportQuestionBank(bank,result);};
   const refreshQuestions=async()=>{if(!selectedBank)return;const result=await api('/banks/'+selectedBank.id+'/questions');setQuestions(result);};
   const uploadQuestionMedia=async(questionId,file,altText)=>{if(!altText.trim()){notify('Isi deskripsi gambar sebelum mengunggah.');return;}if(!validQuestionImage(file)){notify('Gunakan gambar JPG, PNG, atau WebP maksimal 3 MB.');return;}const result=await run(()=>sendQuestionImage(questionId,file,altText));if(result){await refreshQuestions();notify('Gambar soal tersimpan.');}};
   const deleteQuestionMedia=async(mediaId)=>{if(!window.confirm('Hapus gambar pendukung soal ini?'))return;const result=await run(()=>api('/question-media/'+mediaId,{method:'DELETE'}));if(result){await refreshQuestions();notify('Gambar soal dihapus.');}};
+  const deleteQuestion=async question=>{if(!window.confirm(`Hapus soal ini dari bank "${selectedBank?.topic}"? Tindakan ini tidak dapat dibatalkan.`))return;const result=await run(()=>api('/questions/'+question.id,{method:'DELETE'}));if(result){await refreshQuestions();await loadAll();notify('Soal dihapus dari bank.');}};
   const addQuestion=async()=>{setQuestionFormError('');if(questionForm.imageFile&&Number(selectedBank?.examCount)>0){setQuestionFormError('Gambar soal harus disiapkan sebelum bank dijadwalkan.');return;}if(!questionForm.prompt.trim()){setQuestionFormError('Pertanyaan wajib diisi.');return;}if(questionForm.imageFile&&(!validQuestionImage(questionForm.imageFile)||!questionForm.imageAltText.trim())){setQuestionFormError('Gambar harus JPG, PNG, atau WebP maksimal 3 MB dan deskripsinya wajib diisi.');return;}if(questionForm.type==='mc'&&(questionForm.options.some(option=>!option.trim())||!['A','B','C','D'].includes(questionForm.answerKey)||!questionForm.options['ABCD'.indexOf(questionForm.answerKey)]?.trim())){setQuestionFormError('Lengkapi opsi A–D dan pilih kunci jawaban yang terisi.');return;}if(questionForm.type==='essay'&&!questionForm.answerKey.trim()){setQuestionFormError('Rubrik atau panduan koreksi wajib diisi.');return;}if(!Number.isFinite(Number(questionForm.points))||Number(questionForm.points)<=0){setQuestionFormError('Bobot harus lebih besar dari 0.');return;}const {imageFile,imageAltText,...payload}=questionForm;const result=await run(()=>api('/banks/'+selectedBank.id+'/questions',{method:'POST',body:JSON.stringify(payload)}));if(result){let mediaError='';if(imageFile){try{await sendQuestionImage(result.id,imageFile,imageAltText);}catch(error){mediaError=error.message;}}await refreshQuestions();setQuestionForm({type:'mc',prompt:'',options:['','','',''],answerKey:'',points:1,imageFile:null,imageAltText:''});setModal('questions');notify(mediaError?'Soal tersimpan, tetapi gambar gagal diunggah: '+mediaError:'Butir soal tersimpan.');}};
   const createExam=async()=>{const payload={...examForm,bankId:examForm.bankIds?.[0]||examForm.bankId,className:(examForm.classNames||[]).join(', ')||examForm.className};const r=await run(()=>api('/exams',{method:'POST',body:JSON.stringify(payload)}));if(r){setModal('');await loadAll();notify(`Rancangan ujian dibuat untuk ${r.participants} siswa. Soal telah diacak per peserta.`);}};
   const setExamStatus=async(exam,status)=>{const r=await run(()=>api(`/exams/${exam.id}/status`,{method:'PATCH',body:JSON.stringify({status})}));if(r){await loadAll();notify(`Status ujian: ${status}`);}};
@@ -344,6 +347,7 @@ export default function App(){
               onCreate={() => setModal("bank")}
               onCreateSubject={addSubjectStandalone}
               onOpen={openQuestions}
+              onExport={exportBank}
               onDelete={deleteBank}
             />
           )}
@@ -617,6 +621,7 @@ export default function App(){
               onAdd={() => setModal("question-add")}
               onUploadMedia={uploadQuestionMedia}
               onDeleteMedia={deleteQuestionMedia}
+              onDeleteQuestion={deleteQuestion}
             />
           )}
           {modal === "question-add" && (
@@ -1803,6 +1808,7 @@ function BanksPage({
   onCreate,
   onCreateSubject,
   onOpen,
+  onExport,
   onDelete,
 }) {
   const shown = banks.filter((b) =>
@@ -1880,6 +1886,15 @@ function BanksPage({
                     onClick={() => onOpen(b)}
                   >
                     Lihat soal <ArrowUpRight size={14} />
+                  </button>
+                  <button
+                    className="bank-export-action"
+                    disabled={busy || !b.count}
+                    title="Ekspor bank soal ke Excel"
+                    aria-label={`Ekspor bank soal ${b.topic} ke Excel`}
+                    onClick={() => onExport(b)}
+                  >
+                    <Download size={13} /> Excel
                   </button>
                 </div>
               </div>
