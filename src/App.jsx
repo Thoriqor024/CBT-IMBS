@@ -1936,10 +1936,13 @@ function ResultsPage({results,onReview,onSaveFinalScore,busy}){
   </>;
 }
 function ResultsTablePanel({title,note,rows,exportName,onReview,onSaveFinalScore,busy}){
+  const [query,setQuery]=useState('');
+  const filteredRows=rows.filter(row=>String(row.studentName||'').toLocaleLowerCase('id-ID').includes(query.toLocaleLowerCase('id-ID').trim()));
   const canExport=rows.length>0&&rows.every(r=>r.finalScore!==null&&r.finalScore!==undefined);
-  return <section className="panel results-panel"><div className="panel-head"><div><h2>{title}</h2><p>{rows.length} siswa · {note}</p></div><button className="secondary" disabled={!canExport} title={!canExport?(rows.length===0?'Belum ada data untuk diekspor':'Eksport Excel hanya aktif ketika semua siswa telah memiliki nilai akhir'):'Eksport ke Excel'} onClick={()=>exportResults(rows,exportName)}><Download size={14}/> Excel</button></div>
+  return <section className="panel results-panel"><div className="panel-head"><div><h2>{title}</h2><p>{rows.length} siswa{query ? ` · ${filteredRows.length} cocok` : ''} · {note}</p></div><button className="secondary" disabled={!canExport} title={!canExport?(rows.length===0?'Belum ada data untuk diekspor':'Eksport Excel hanya aktif ketika semua siswa telah memiliki nilai akhir'):'Eksport ke Excel'} onClick={()=>exportResults(rows,exportName)}><Download size={14}/> Excel</button></div>
+    <label className="results-search"><Search size={14}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Cari nama siswa..." aria-label={`Cari nama siswa pada card ${title}`}/></label>
     <div className="student-table wide results-table"><table><thead><tr><th>UJIAN / KELAS</th><th>NAMA SISWA</th><th>STATUS</th><th>PELANGGARAN</th><th>SINYAL MENUNGGU</th><th>PG BENAR</th><th>PG SALAH</th><th>PG KOSONG</th><th>ESSAY</th><th>SELESAI</th><th>NILAI AKHIR</th></tr></thead><tbody>
-      {rows.map((r,i)=><tr key={r.examId+'-'+r.studentId+'-'+i}>
+      {filteredRows.map((r,i)=><tr key={r.examId+'-'+r.studentId+'-'+i}>
         <td><b>{r.title}</b><small>{r.username} · {r.className}</small></td><td>{r.studentName}</td><td>{statusLabel(r.status)}</td><td>{Number(r.violationCount)||0}</td><td>{Number(r.pendingViolationCount)||0}</td>
         <td className="result-metric">{r.mcCorrectCount}<small>{formatPoints(r.mcPointsEarned)} / {formatPoints(r.mcPointsTotal)} poin</small></td>
         <td className="result-metric">{r.mcWrongCount}</td><td className="result-metric">{r.mcUnansweredCount}</td>
@@ -1958,7 +1961,7 @@ function ResultsTablePanel({title,note,rows,exportName,onReview,onSaveFinalScore
           )}
         </td>
       </tr>)}
-    </tbody></table>{!rows.length&&<div className="results-table-empty">Belum ada hasil pada kategori ini.</div>}</div>
+    </tbody></table>{!filteredRows.length&&<div className="results-table-empty">{rows.length ? 'Tidak ada siswa dengan nama tersebut.' : 'Belum ada hasil pada kategori ini.'}</div>}</div>
   </section>;
 }
 function FinalScoreInput({result,onSave,busy}){

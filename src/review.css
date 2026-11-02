@@ -3,6 +3,17 @@
 
 .results-table .table-row{grid-template-columns:minmax(145px,1.2fr) minmax(125px,1fr) 92px 86px 78px 82px minmax(120px,.9fr) minmax(170px,1.2fr);min-width:1120px;gap:9px}
 .results-table .table-label{font-size:8px}
+.results-search{display:flex;align-items:center;gap:7px;margin:0 0 10px;padding:0 9px;height:34px;border:1px solid #e5eaee;border-radius:7px;background:#fff;color:#8b98a6}
+.results-search:focus-within{border-color:#72b498;box-shadow:0 0 0 3px #56aa8120;color:#328765}
+.results-search input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:#455367;font:11px 'DM Sans',sans-serif}
+.results-search input::placeholder{color:#a1acb8}
+.results-table{max-height:486px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#cbd5e1 transparent}
+.results-table::-webkit-scrollbar{width:7px;height:7px}
+.results-table::-webkit-scrollbar-track{background:transparent}
+.results-table::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:999px}
+.results-table::-webkit-scrollbar-thumb:hover{background:#94a3b8}
+.results-table table thead th{position:sticky;top:0;z-index:1;background:#fff}
+@media(max-width:760px){.results-table{max-height:430px}}
 .result-subtext{display:block;margin-top:4px;color:#96a1ad;font-size:8px}
 .result-metric{font-weight:700;color:#42556b}
 .result-metric small{display:block;margin-top:3px;color:#8b97a5;font-size:8px;font-weight:500}
