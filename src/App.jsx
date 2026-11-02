@@ -39,11 +39,13 @@ export default function App(){
   const [profileFormError,setProfileFormError]=useState('');
   const [teacherList,setTeacherList]=useState([]),[teacherToEdit,setTeacherToEdit]=useState(null),[subjectToEdit,setSubjectToEdit]=useState(null),[selectedAnalysisBankId,setSelectedAnalysisBankId]=useState(''),[analysisData,setAnalysisData]=useState(null),[analysisLoading,setAnalysisLoading]=useState(false);
   const isAdmin=user?.role==='admin';
+  const isPengawas=user?.role==='pengawas';
   const isPlatformOwner=user?.role==='platform_owner';
-  const canManageExamMonitoring=user?.role==='admin'||user?.role==='teacher';
+  const canManageExamMonitoring=user?.role==='admin'||user?.role==='teacher'||user?.role==='pengawas';
+  const canRecordExamViolation=user?.role==='admin'||user?.role==='teacher';
   const notify=message=>{setToast(message);setTimeout(()=>setToast(''),3000);};
   const loadItemAnalysis=useCallback(async(bankId)=>{if(!bankId){setAnalysisData(null);return;}setAnalysisLoading(true);try{const data=await api('/banks/'+bankId+'/analysis');setAnalysisData(data);}catch(err){setError(err.message);setAnalysisData(null);}finally{setAnalysisLoading(false);}},[]);
-  const loadAll=useCallback(async()=>{if(!user)return;setError('');try{const [d,s,b,sub,e,r,settings]=await Promise.all([api('/dashboard'),api('/students'),api('/banks'),api('/subjects'),api('/exams'),api('/results'),api('/settings')]);setDashboard(d);setStudents(s);setBanks(b);setSubjects(sub);setExams(e);setResults(r);setSchoolSettings(settings);setSettingsForm(copySettings(settings));setStudentForm(f=>({...f,className:settings.classes.includes(f.className)?f.className:settings.classes[0]}));setBankForm(f=>({...f,subjectId:f.subjectId||String(sub.find(x=>x.name==='Bahasa Arab')?.id||sub[0]?.id||''),grade:settings.grades.includes(f.grade)?f.grade:settings.grades[0]}));setExamForm(f=>({...f,bankId:f.bankId||String(b.find(x=>x.subject==='Bahasa Arab')?.id||b[0]?.id||''),bankIds:f.bankIds?.length?f.bankIds:(b[0]?[b[0].id]:[]),className:settings.classes.includes(f.className)?f.className:settings.classes[0],classNames:f.classNames?.length?f.classNames.filter(c=>settings.classes.includes(c)):[settings.classes[0]]}));}catch(err){setError(err.message);}},[user]);
+  const loadAll=useCallback(async()=>{if(!user)return;setError('');try{if(user.role==='pengawas'){setExams(await api('/exams'));setDashboard({students:0,banks:0,exams:0,average:0});setStudents([]);setBanks([]);setSubjects([]);setResults([]);return;}const [d,s,b,sub,e,r,settings]=await Promise.all([api('/dashboard'),api('/students'),api('/banks'),api('/subjects'),api('/exams'),api('/results'),api('/settings')]);setDashboard(d);setStudents(s);setBanks(b);setSubjects(sub);setExams(e);setResults(r);setSchoolSettings(settings);setSettingsForm(copySettings(settings));setStudentForm(f=>({...f,className:settings.classes.includes(f.className)?f.className:settings.classes[0]}));setBankForm(f=>({...f,subjectId:f.subjectId||String(sub.find(x=>x.name==='Bahasa Arab')?.id||sub[0]?.id||''),grade:settings.grades.includes(f.grade)?f.grade:settings.grades[0]}));setExamForm(f=>({...f,bankId:f.bankId||String(b.find(x=>x.subject==='Bahasa Arab')?.id||b[0]?.id||''),bankIds:f.bankIds?.length?f.bankIds:(b[0]?[b[0].id]:[]),className:settings.classes.includes(f.className)?f.className:settings.classes[0],classNames:f.classNames?.length?f.classNames.filter(c=>settings.classes.includes(c)):[settings.classes[0]]}));}catch(err){setError(err.message);}},[user]);
   useEffect(()=>{
     api('/auth/me').then(r=>{
       setUser(r.user);
@@ -55,6 +57,7 @@ export default function App(){
       }catch{}
     }).finally(()=>setBooting(false));
   },[]);
+  useEffect(()=>{if(isPengawas)setPage('Ujian');},[isPengawas]);
   useEffect(()=>{if(user&&user.role!=='student')loadAll();},[user,loadAll]);
   useEffect(()=>{if(user?.role==='admin')api('/teachers').then(setTeacherList).catch(err=>setError(err.message));else setTeacherList([]);},[user]);
   useEffect(()=>{if(page==='Analisis Soal'&&banks.length){const target=selectedAnalysisBankId&&banks.some(b=>String(b.id)===String(selectedAnalysisBankId))?selectedAnalysisBankId:String(banks[0]?.id||'');if(target&&target!==selectedAnalysisBankId)setSelectedAnalysisBankId(target);if(target)loadItemAnalysis(target);}},[page,banks,selectedAnalysisBankId,loadItemAnalysis]);
@@ -79,7 +82,7 @@ export default function App(){
   const editSubject=subject=>{setSubjectToEdit(subject);setSubjectReturnModal('');setModal('subject');};
   const updateSubject=async subject=>{const result=await run(()=>api('/subjects/'+subject.id,{method:'PUT',body:JSON.stringify({name:subject.name,languageCode:subject.languageCode,textDirection:subject.textDirection})}));if(result){await loadAll();setSubjectToEdit(null);setModal('');notify('Mata pelajaran berhasil diperbarui.');}};
   const deleteSubject=async subject=>{if(!window.confirm(`Hapus mata pelajaran "${subject.name}"? Tindakan ini tidak dapat dibatalkan.`))return;const result=await run(()=>api('/subjects/'+subject.id,{method:'DELETE'}));if(result){await loadAll();notify('Mata pelajaran berhasil dihapus.');}};
-  const createTeacher=async teacher=>{setTeacherFormError('');setBusy(true);try{const result=await api('/teachers',{method:'POST',body:JSON.stringify(teacher)});setTeacherList(current=>[result,...current]);setModal('');notify('Akun guru dibuat. Username akses: '+result.username);}catch(err){setTeacherFormError(err.message||'Akun guru tidak dapat dibuat.');}finally{setBusy(false);}};
+  const createTeacher=async teacher=>{setTeacherFormError('');setBusy(true);try{const result=await api('/teachers',{method:'POST',body:JSON.stringify(teacher)});setTeacherList(current=>[result,...current]);setModal('');notify('Akun staf dibuat. Username akses: '+result.username);}catch(err){setTeacherFormError(err.message||'Akun staf tidak dapat dibuat.');}finally{setBusy(false);}};
   const updateTeacherAccess=async changes=>{setTeacherFormError('');setBusy(true);try{const result=await api('/teachers/'+changes.id+'/access',{method:'PUT',body:JSON.stringify(changes)});setTeacherList(current=>current.map(teacher=>String(teacher.id)===String(result.id)?{...teacher,...result}:teacher));setTeacherToEdit(null);setModal('');notify('Akses guru diperbarui.');}catch(err){setTeacherFormError(err.message||'Akses guru tidak dapat diperbarui.');}finally{setBusy(false);}};
   const deleteTeacher=async teacher=>{if(!window.confirm(`Hapus akun guru ${teacher.name} (${teacher.username})? Akses login akan dicabut. Data soal, ujian, jawaban, dan nilai tetap disimpan. Tindakan ini tidak dapat dibatalkan.`))return;const result=await run(()=>api(`/teachers/${teacher.id}`,{method:'DELETE'}));if(result){setTeacherList(current=>current.filter(item=>String(item.id)!==String(teacher.id)));notify('Akun guru dihapus dan seluruh sesi login dicabut.');}};
   const saveSubject=async subject=>{const result=await run(()=>api('/subjects',{method:'POST',body:JSON.stringify(subject)}));if(result){await loadAll();setBankForm(form=>({...form,subjectId:String(result.id)}));setSubjectToEdit(null);setModal(subjectReturnModal);notify('Mata pelajaran ditambahkan.');}};
@@ -145,6 +148,7 @@ export default function App(){
           {nav
             .filter(
               ([name]) =>
+                (name === "Ujian" || name === "Pantau Ujian" || !isPengawas) &&
                 (name !== "Siswa" || isAdmin) &&
                 (name !== "Pantau Ujian" || canManageExamMonitoring),
             )
@@ -184,16 +188,16 @@ export default function App(){
             </button>
             <button
               className={
-                "nav-item " + (page === "Akun guru" ? "selected" : "")
+                "nav-item " + (page === "Akun staf" ? "selected" : "")
               }
               onClick={() => {
-                setPage("Akun guru");
+                setPage("Akun staf");
                 setMobile(false);
                 setQuery("");
               }}
             >
               <GraduationCap size={18} />
-              <span>Akun guru</span>
+              <span>Akun staf</span>
             </button>
           </>
         )}
@@ -222,6 +226,8 @@ export default function App(){
                 ? "AD"
                 : user.role === "teacher"
                   ? "GU"
+                  : user.role === "pengawas"
+                    ? "PW"
                   : user.role === "platform_owner"
                     ? "PO"
                     : "SW"}
@@ -267,6 +273,8 @@ export default function App(){
                 ? "AD"
                 : user.role === "teacher"
                   ? "GU"
+                  : user.role === "pengawas"
+                    ? "PW"
                   : user.role === "platform_owner"
                     ? "PO"
                     : "SW"}
@@ -314,7 +322,7 @@ export default function App(){
               onTemplate={downloadStudentImportTemplate}
             />
           )}
-          {page === "Akun guru" && isAdmin && (
+          {page === "Akun staf" && isAdmin && (
             <TeacherAccountsPage
               teachers={teacherList}
               subjects={subjects}
@@ -358,6 +366,7 @@ export default function App(){
               busy={busy}
               onCreate={openExamCreate}
               onStatus={setExamStatus}
+              canRunExam={isAdmin || isPengawas}
               onMonitor={openMonitor}
               onDelete={deleteExam}
             />
@@ -370,6 +379,7 @@ export default function App(){
               onReviewSession={reviewViolationSession}
               onViolation={recordViolation}
               onReset={resetStudentSession}
+              canRecordViolation={canRecordExamViolation}
             />
           )}
           {page === "Hasil Ujian" && (
@@ -417,7 +427,7 @@ export default function App(){
       </main>
       {modal && (
         <Modal
-          title={modal === "profile" ? "Edit profil akun" : modal === "teacher-add" ? "Tambah guru" : modal === "teacher-import" ? "Import guru" : modal === "teacher-access" ? "Atur akses guru" : modal === "subject" ? (subjectToEdit ? "Edit mata pelajaran" : "Tambah mata pelajaran") : modalTitle(modal, selectedBank, selectedExam)}
+          title={modal === "profile" ? "Edit profil akun" : modal === "teacher-add" ? "Tambah staf" : modal === "teacher-import" ? "Import guru" : modal === "teacher-access" ? "Atur akses staf" : modal === "subject" ? (subjectToEdit ? "Edit mata pelajaran" : "Tambah mata pelajaran") : modalTitle(modal, selectedBank, selectedExam)}
           className={modal === "bank" ? "question-bank-modal" : modal === "exam" ? "exam-create-modal" : ""}
           onClose={() => {
             setModal("");
@@ -963,6 +973,7 @@ export default function App(){
                 exam={selectedExam}
                 students={monitor}
                 canManage={canManageExamMonitoring}
+                canRecordViolation={canRecordExamViolation}
                 onRefresh={refreshMonitor}
                 onViolation={recordViolation}
                 onReviewEvent={reviewViolationEvent}
@@ -1018,7 +1029,7 @@ export default function App(){
   );
 }
 
-function roleLabel(role){return role==='admin'?'Admin':role==='teacher'?'Guru':role==='platform_owner'?'Pemilik Platform':'Siswa';}
+function roleLabel(role){return role==='admin'?'Admin':role==='teacher'?'Guru':role==='pengawas'?'Pengawas':role==='platform_owner'?'Pemilik Platform':'Siswa';}
 
 function PlatformOwnerConsole({ user, onLogout }) {
   const [overview, setOverview] = useState(null);
@@ -1668,16 +1679,16 @@ function TeacherAccountsPage({ teachers, subjects, quota, onAdd, onImport, onEdi
     <>
       <PageTitle
         eyebrow="PENGELOLAAN AKUN"
-        title="Akun guru"
-        desc="Kelola akun masuk serta cakupan kelas dan mata pelajaran guru."
+        title="Akun staf"
+        desc="Kelola akun Guru dan Pengawas sekolah."
         actions={<>
           <button className="secondary" onClick={onImport}><FileSpreadsheet size={17} /> Import Excel</button>
-          <button className="primary" onClick={onAdd}><Plus size={17} /> Tambah guru</button>
+          <button className="primary" onClick={onAdd}><Plus size={17} /> Tambah staf</button>
         </>}
       />
       <section className="panel full-panel teacher-admin-panel">
         <div className="panel-head">
-          <div><h2>Daftar guru</h2><p>{filtered.length} dari {teachers.length} akun guru {quota?.maxTeachers ? `(Batas paket: ${quota.maxTeachers} guru)` : ''} · akses mengikuti kelas dan mata pelajaran</p></div>
+          <div><h2>Daftar staf</h2><p>{filtered.length} dari {teachers.length} akun staf {quota?.maxTeachers ? `(Batas paket: ${quota.maxTeachers} staf)` : ''}</p></div>
         </div>
         <div className="toolbar" style={{ marginTop: 14 }}>
           <SearchBox
@@ -1701,7 +1712,7 @@ function TeacherAccountsPage({ teachers, subjects, quota, onAdd, onImport, onEdi
               </i>
               {teacher.name}
             </span>
-            <span className="mono">{teacher.username}</span>
+            <span className="mono">{teacher.username}<small style={{display:'block',marginTop:3,color:'#7b8b9b'}}>{teacher.role === 'pengawas' ? 'Pengawas' : 'Guru'}</small></span>
             <span>{teacher.classes.length ? teacher.classes.join(', ') : 'Belum ditetapkan'}</span>
             <span>{teacher.subjectIds.length ? teacher.subjectIds.map(id => subjects.find(subject => Number(subject.id) === Number(id))?.name || id).join(', ') : 'Belum ditetapkan'}</span>
             <span className="teacher-account-actions">
@@ -1911,8 +1922,8 @@ function BanksPage({
     </>
   );
 }
-function ExamsPage({exams,isAdmin,busy,onCreate,onStatus,onMonitor,onDelete}) {
-  return <><PageTitle eyebrow="PENJADWALAN & DISTRIBUSI" title="Ujian" desc="Susun sesi dari bank spesifik; server menyimpan pembagian soal per peserta." actions={isAdmin?<button className="primary" onClick={onCreate}><Plus size={17}/> Buat ujian</button>:null}/><div className="exam-cards"><section className="panel exam-list-card"><div className="panel-head"><div><h2>Rancangan ujian</h2><p>{exams.length} sesi tersimpan</p></div><RefreshCw size={16} color="#91a0ad"/></div>{exams.map(e=><div className="running-exam" key={e.id}><div className="exam-icon"><BookOpen size={20}/></div><div><div className={e.status==='active'?'live-label':'upcoming-label'}>{statusLabel(e.status)}</div><h3>{e.title} &middot; Kelas {e.className}</h3><p>{e.subject} &middot; {e.mcCount} PG + {e.essayCount} essay &middot; {e.durationMinutes} menit &middot; {e.participants} siswa</p></div><div className="exam-actions"><button className="row-action" title="Pantau peserta" aria-label={`Pantau ${e.title}`} onClick={()=>onMonitor(e)}><Eye size={16}/></button>{isAdmin&&e.status!=='active'&&e.status!=='completed'&&<button className="row-action" title="Aktifkan ujian" aria-label={`Aktifkan ${e.title}`} onClick={()=>onStatus(e,'active')}><Play size={15}/></button>}{isAdmin&&e.status==='active'&&<button className="row-action" title="Akhiri ujian" aria-label={`Akhiri ${e.title}`} onClick={()=>onStatus(e,'completed')}><Pause size={15}/></button>}{isAdmin&&<button className="row-action delete-action" disabled={busy||e.status==='active'} title={e.status==='active'?'Akhiri ujian sebelum menghapus':e.in_progress>0?'Selesaikan sesi peserta sebelum menghapus':'Hapus ujian simulasi'} aria-label={`Hapus ujian ${e.title}`} onClick={()=>onDelete(e)}><Trash2 size={15}/></button>}</div></div>)}{!exams.length&&<Empty message="Belum ada ujian" detail="Buat rancangan untuk mengacak soal bagi peserta."/>}</section><section className="panel rules-card"><div className="panel-head"><div><h2>Aturan pengacakan</h2><p>Ditegakkan di server</p></div><div className="shuffle-badge"><Shuffle size={18}/></div></div><ul><li><Check size={15}/> Bank soal dan kelas dipilih saat membuat sesi</li><li><Check size={15}/> Kuota PG dan essay divalidasi dengan stok</li><li><Check size={15}/> Soal PG & opsi diacak tiap peserta; soal essay tetap urut</li><li><Check size={15}/> Kunci jawaban tidak dikirim pada API bank</li></ul><div className="rule-note"><CircleAlert size={16}/><span>Pengaktifan sesi belum membuka halaman ujian siswa. Itu masuk Phase 2.</span></div></section></div></>;
+function ExamsPage({exams,isAdmin,canRunExam=false,busy,onCreate,onStatus,onMonitor,onDelete}) {
+  return <><PageTitle eyebrow="PENJADWALAN & DISTRIBUSI" title="Ujian" desc="Susun sesi dari bank spesifik; server menyimpan pembagian soal per peserta." actions={isAdmin?<button className="primary" onClick={onCreate}><Plus size={17}/> Buat ujian</button>:null}/><div className="exam-cards"><section className="panel exam-list-card"><div className="panel-head"><div><h2>Rancangan ujian</h2><p>{exams.length} sesi tersimpan</p></div><RefreshCw size={16} color="#91a0ad"/></div>{exams.map(e=><div className="running-exam" key={e.id}><div className="exam-icon"><BookOpen size={20}/></div><div><div className={e.status==='active'?'live-label':'upcoming-label'}>{statusLabel(e.status)}</div><h3>{e.title} &middot; Kelas {e.className}</h3><p>{e.subject} &middot; {e.mcCount} PG + {e.essayCount} essay &middot; {e.durationMinutes} menit &middot; {e.participants} siswa</p></div><div className="exam-actions"><button className="row-action" title="Pantau peserta" aria-label={`Pantau ${e.title}`} onClick={()=>onMonitor(e)}><Eye size={16}/></button>{canRunExam&&e.status!=='active'&&e.status!=='completed'&&<button className="row-action" title="Jalankan ujian" aria-label={`Jalankan ${e.title}`} onClick={()=>onStatus(e,'active')}><Play size={15}/></button>}{isAdmin&&e.status==='active'&&<button className="row-action" title="Akhiri ujian" aria-label={`Akhiri ${e.title}`} onClick={()=>onStatus(e,'completed')}><Pause size={15}/></button>}{isAdmin&&<button className="row-action delete-action" disabled={busy||e.status==='active'} title={e.status==='active'?'Akhiri ujian sebelum menghapus':e.in_progress>0?'Selesaikan sesi peserta sebelum menghapus':'Hapus ujian simulasi'} aria-label={`Hapus ujian ${e.title}`} onClick={()=>onDelete(e)}><Trash2 size={15}/></button>}</div></div>)}{!exams.length&&<Empty message="Belum ada ujian" detail="Buat rancangan untuk mengacak soal bagi peserta."/>}</section><section className="panel rules-card"><div className="panel-head"><div><h2>Aturan pengacakan</h2><p>Ditegakkan di server</p></div><div className="shuffle-badge"><Shuffle size={18}/></div></div><ul><li><Check size={15}/> Bank soal dan kelas dipilih saat membuat sesi</li><li><Check size={15}/> Kuota PG dan essay divalidasi dengan stok</li><li><Check size={15}/> Soal PG & opsi diacak tiap peserta; soal essay tetap urut</li><li><Check size={15}/> Kunci jawaban tidak dikirim pada API bank</li></ul><div className="rule-note"><CircleAlert size={16}/><span>Pengaktifan sesi belum membuka halaman ujian siswa. Itu masuk Phase 2.</span></div></section></div></>;
 }
 function ResultsPage({results,onReview,onSaveFinalScore,busy}){
   const flagged=results.filter(result=>result.status==='locked'||Number(result.violationCount)>0||Number(result.pendingViolationCount)>0);

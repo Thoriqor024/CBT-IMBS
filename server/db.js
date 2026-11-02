@@ -44,7 +44,7 @@ export async function initializeDatabase(targetPool = pool) {
     await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id BIGSERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, full_name TEXT NOT NULL,
-          role TEXT NOT NULL CHECK (role IN ('admin','teacher','student','platform_owner')), email TEXT,
+          role TEXT NOT NULL CHECK (role IN ('admin','teacher','pengawas','student','platform_owner')), email TEXT,
         password_hash TEXT NOT NULL, class_name TEXT, active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
@@ -176,6 +176,12 @@ export async function initializeDatabase(targetPool = pool) {
       const migrationSql = await readFile(new URL('./migrations/004_complex_mc.sql', import.meta.url), 'utf8');
       await client.query(migrationSql);
       await client.query('INSERT INTO schema_migrations(version,name) VALUES($1,$2)', [4, 'complex-mc']);
+    }
+    const pengawasRoleMigration = await client.query('SELECT 1 FROM schema_migrations WHERE version=$1', [5]);
+    if (!pengawasRoleMigration.rowCount) {
+      const migrationSql = await readFile(new URL('./migrations/005_pengawas-role.sql', import.meta.url), 'utf8');
+      await client.query(migrationSql);
+      await client.query('INSERT INTO schema_migrations(version,name) VALUES($1,$2)', [5, 'pengawas-role']);
     }
     await client.query('COMMIT');
   } catch (error) {

@@ -13,13 +13,15 @@ Bahasa        : Indonesia (istilah teknis dalam bahasa sistem)
 
 Platform CBT IMBS (Computer Based Test — Integrated Management and Base System)
 adalah sistem ujian berbasis web yang dirancang untuk kebutuhan sekolah. Platform
-memiliki tiga level akses (role):
+memiliki empat level akses sekolah (role):
 
   ┌─────────────┬──────────────────────────────────────────────────────────────┐
   │ ROLE        │ KEWENANGAN UTAMA                                             │
   ├─────────────┼──────────────────────────────────────────────────────────────┤
   │ Admin       │ Kendali penuh: siswa, bank soal, ujian, monitor, pengaturan  │
   │ Guru        │ Pantau ujian, hasil, nilai essay, dan bank sesuai scope admin  │
+  │ Pengawas    │ Jalankan ujian, terbitkan PIN, pantau, blokir, false positive, │
+  │             │ dan pulihkan sesi peserta                                      │
   │ Siswa       │ Mengerjakan ujian yang ditugaskan sesuai jadwal              │
   └─────────────┴──────────────────────────────────────────────────────────────┘
 

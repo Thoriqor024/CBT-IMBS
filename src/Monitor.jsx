@@ -12,7 +12,7 @@ const eventLabels = {
   admin_reset: 'Sesi dipulihkan oleh pengawas',
 };
 
-export default function Monitor({exam,students,canManage,onRefresh,onViolation,onReviewEvent,onReviewSession,onReset}){
+export default function Monitor({exam,students,canManage,canRecordViolation=false,onRefresh,onViolation,onReviewEvent,onReviewSession,onReset}){
   const [expanded,setExpanded]=useState({});
   const [now,setNow]=useState(Date.now());
   useEffect(()=>{if(!exam?.id)return;const refresh=setInterval(()=>onRefresh(),5000),clock=setInterval(()=>setNow(Date.now()),1000);return()=>{clearInterval(refresh);clearInterval(clock);};},[exam?.id]);
@@ -32,7 +32,7 @@ export default function Monitor({exam,students,canManage,onRefresh,onViolation,o
           <span>{s.score??'—'}</span>
           <div className="monitor-actions">
             {events.length>0&&<button className="evidence-toggle" onClick={()=>toggle(s.id)} title="Tampilkan riwayat sinyal"><Clock3 size={13}/>{events.length}{expanded[s.id]?<ChevronUp size={13}/>:<ChevronDown size={13}/>}</button>}
-            {canManage&&exam?.status==='active'&&s.status==='in_progress'&&!reviewRequired&&<button className="flag-action" title="Catat pelanggaran yang diamati pengawas" onClick={()=>onViolation(s)}><CircleAlert size={14}/></button>}
+            {canRecordViolation&&exam?.status==='active'&&s.status==='in_progress'&&!reviewRequired&&<button className="flag-action" title="Catat pelanggaran yang diamati pengawas" onClick={()=>onViolation(s)}><CircleAlert size={14}/></button>}
             {canManage&&exam?.status==='active'&&(s.status==='locked'||n>0)&&<button title="Pulihkan sesi dengan alasan audit" onClick={()=>onReset(s)}><RotateCcw size={14}/></button>}
             {(s.status==='completed'||s.status==='locked')&&<span className="monitor-locked-mark">{blocked?<CircleAlert size={15}/>:<ShieldCheck size={15}/>}</span>}
           </div>
