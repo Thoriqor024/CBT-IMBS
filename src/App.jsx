@@ -62,6 +62,11 @@ export default function App(){
   useEffect(()=>{if(user&&user.role!=='student'&&user.role!=='platform_owner')loadAll();},[user,loadAll]);
   useEffect(()=>{if(user?.role==='admin')api('/teachers').then(setTeacherList).catch(err=>setError(err.message));else setTeacherList([]);},[user]);
   useEffect(()=>{if(page==='Analisis Soal'&&banks.length){const target=selectedAnalysisBankId&&banks.some(b=>String(b.id)===String(selectedAnalysisBankId))?selectedAnalysisBankId:String(banks[0]?.id||'');if(target&&target!==selectedAnalysisBankId)setSelectedAnalysisBankId(target);if(target)loadItemAnalysis(target);}},[page,banks,selectedAnalysisBankId,loadItemAnalysis]);
+  useEffect(()=>{
+    if(tenantLoginEnabled && typeof window !== 'undefined' && window.location.pathname === '/'){
+      window.location.replace('/platform');
+    }
+  },[]);
   const run=async action=>{setBusy(true);setError('');try{return await action();}catch(err){setError(err.message);notify(err.message);return null;}finally{setBusy(false);}};
   const saveSettings=async()=>{const mc=Number(settingsForm.mcWeightPercentage),essay=Number(settingsForm.essayWeightPercentage);if(settingsForm.mcWeightPercentage===''||settingsForm.essayWeightPercentage===''||!Number.isInteger(mc)||!Number.isInteger(essay)||mc<0||mc>100||essay<0||essay>100||mc+essay!==100){notify('Bobot PG + Essay harus bilangan bulat 0-100 dan total 100.');return;}const payload={...settingsForm,defaultExamDurationMinutes:Number(settingsForm.defaultExamDurationMinutes),violationThreshold:Number(settingsForm.violationThreshold),mcWeightPercentage:mc,essayWeightPercentage:essay};const saved=await run(()=>api('/settings',{method:'PUT',body:JSON.stringify(payload)}));if(saved){setSchoolSettings(saved);setSettingsForm(copySettings(saved));setStudentForm(form=>({...form,className:saved.classes.includes(form.className)?form.className:saved.classes[0]}));setBankForm(form=>({...form,grade:saved.grades.includes(form.grade)?form.grade:saved.grades[0]}));setExamForm(form=>({...form,className:saved.classes.includes(form.className)?form.className:saved.classes[0]}));notify('Pengaturan sekolah berhasil disimpan dan dicatat di audit.');}};
   const openExamCreate=()=>{setExamForm(form=>({...form,className:schoolSettings.classes[0],classNames:form.classNames?.length?form.classNames:[schoolSettings.classes[0]],bankIds:form.bankIds?.length?form.bankIds:(banks[0]?[banks[0].id]:[]),durationMinutes:schoolSettings.defaultExamDurationMinutes}));setModal('exam');};
@@ -113,8 +118,9 @@ export default function App(){
   const visibleStudents=useMemo(()=>students.filter(s=>(s.name+s.username+s.className).toLowerCase().includes(query.toLowerCase())),[students,query]);
   const downloadCredentials=()=>{const headers=tenantLoginEnabled?'nama,email,username,password awal,kelas\n':'nama,username,token,kelas\n';const content=headers+credentials.map(x=>(tenantLoginEnabled?[x.name,x.email,x.username,x.token,x.className]:[x.name,x.username,x.token,x.className]).map(v=>`"${String(v||'').replaceAll('"','""')}"`).join(',')).join('\n')+'\n';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:'text/csv;charset=utf-8'}));a.download='kredensial-siswa-imbs.csv';a.click();URL.revokeObjectURL(a.href);};
   if(booting)return <div className="loading-screen"><div className="brand-mark"><GraduationCap/></div><span>Memuat ruang kerja IMBS...</span></div>;
-  if(!user&&window.location.pathname==='/platform')return <PlatformOwnerLogin onLogin={login} busy={busy} error={error}/>;
-  if(!user)return <><Login onLogin={login} busy={busy} error={error} tenancyEnabled={tenantLoginEnabled}/><a href="/platform" className="text-button" style={{position:'fixed',left:'50%',bottom:16,transform:'translateX(-50%)',zIndex:20}}>Masuk sebagai pemilik platform</a></>;
+  const shouldUsePlatformLogin = tenantLoginEnabled || (typeof window !== 'undefined' && window.location.pathname === '/platform');
+  if(!user && shouldUsePlatformLogin) return <PlatformOwnerLogin onLogin={login} busy={busy} error={error}/>;
+  if(!user) return <><Login onLogin={login} busy={busy} error={error} tenancyEnabled={tenantLoginEnabled}/><a href="/platform" className="text-button" style={{position:'fixed',left:'50%',bottom:16,transform:'translateX(-50%)',zIndex:20}}>Masuk sebagai pemilik platform</a></>;
   if(user.role==='platform_owner')return <PlatformOwnerConsole user={user} onLogout={logout}/>;
   if(user.role==='student')return <StudentPortal user={user} onLogout={logout}/>;
   return (
