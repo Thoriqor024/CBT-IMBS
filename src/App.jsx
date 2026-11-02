@@ -1616,7 +1616,7 @@ function StudentsPage({
             <Download size={15} /> Template CSV
           </button>
         </div>
-        <div className="student-table wide">
+        <div className="student-table wide student-list-scroll">
           <div className="table-row table-label">
             <span>NAMA SISWA</span>
             <span>USERNAME</span>
@@ -1697,7 +1697,7 @@ function TeacherAccountsPage({ teachers, subjects, quota, onAdd, onImport, onEdi
             placeholder="Cari nama guru atau username..."
           />
         </div>
-        <div className="student-table wide">
+        <div className="student-table wide teacher-list-scroll">
           <div className="table-row table-label">
             <span>NAMA GURU</span>
             <span>USERNAME</span>

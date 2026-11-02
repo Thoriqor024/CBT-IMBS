@@ -117,9 +117,13 @@
 }
 
 /* Item Analysis table */
-.item-analysis-wrapper { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.student-list-scroll, .teacher-list-scroll { max-height: min(552px, 65vh); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+.student-list-scroll .table-label, .teacher-list-scroll .table-label { position: sticky; top: 0; z-index: 1; background: #fff; }
+/* shortcut: wrapped question text may show fewer than 10 rows; use measured row sizing if exact count is required. */
+.item-analysis-wrapper { width: 100%; max-height: min(405px, 65vh); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; -webkit-overflow-scrolling: touch; }
 .item-analysis-table { width: 100%; min-width: 880px; border-collapse: collapse; text-align: left; }
 .item-analysis-table th { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; color: #64748b; font-size: 11px; font-weight: 700; letter-spacing: 0.5px; white-space: nowrap; }
+.item-analysis-table thead th { position: sticky; top: 0; z-index: 1; background: #fff; }
 .item-analysis-table td { padding: 11px 12px; border-bottom: 1px solid #f1f5f9; color: #334155; font-size: 12px; vertical-align: middle; }
 .item-analysis-table tbody tr:hover { background: #f8fafc; }
 
