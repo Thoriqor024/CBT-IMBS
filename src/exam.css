@@ -8,3 +8,17 @@
 .exam-question-card .answer-options button{line-height:1.55}
 .exam-question-card .essay-answer{line-height:1.6}
 @media(max-width:760px){.exam-body{overflow:hidden;min-height:0}.exam-question-area{flex:1 1 auto;min-height:0;overflow-y:auto}.exam-sidebar{flex:0 0 auto}.exam-question-card .answer-options button,.exam-question-card .essay-answer{font-size:21px}}
+
+.arabic-keyboard-layout{display:grid;gap:4px;padding:8px;border:1px solid #dfe7e4;border-radius:9px;background:#fbfaf6;direction:ltr}
+.arabic-keyboard-layout .keyboard-row{display:flex;gap:4px;margin:0;direction:ltr}
+.arabic-keyboard-layout .keyboard-key{position:relative;display:grid;place-items:center;flex:1;min-width:0;height:48px;padding:12px 4px 4px;border:1px solid #e3d6bd;border-radius:8px;background:#fffdf9;color:#1f2937;font:16px 'Amiri',serif;box-shadow:0 1px 1px #172b1b0b;cursor:pointer}
+.arabic-keyboard-layout .keyboard-key small{position:absolute;top:3px;right:6px;color:#8b7b63;font:9px 'DM Sans',sans-serif}
+.arabic-keyboard-layout .keyboard-key b{font:18px 'Amiri',serif;font-weight:400;line-height:1}
+.arabic-keyboard-layout .keyboard-key.tab,.arabic-keyboard-layout .keyboard-key.caps,.arabic-keyboard-layout .keyboard-key.shift{flex:0 0 72px;font:10px 'DM Sans',sans-serif}
+.arabic-keyboard-layout .keyboard-key.backspace,.arabic-keyboard-layout .keyboard-key.enter{flex:0 0 88px;font:10px 'DM Sans',sans-serif}
+.arabic-keyboard-layout .keyboard-key.space{flex:0 0 60%;margin:0 auto}
+.arabic-keyboard-layout .keyboard-key:hover,.arabic-keyboard-layout .keyboard-key.shift-active{border-color:#b99655;background:#fff4dc}
+.arabic-keyboard-layout .keyboard-key:active{transform:translateY(1px);background:#f5ead2}
+.arabic-keyboard-layout.shift-active .keyboard-key:not(.tab):not(.caps):not(.shift):not(.backspace):not(.enter):not(.space){background:#fff4dc;color:#9b5b13}
+.arabic-keyboard-help{margin:4px 2px 0;color:#7c6d58;font:10px/1.6 'DM Sans',sans-serif;text-align:left}
+@media(max-width:760px){.arabic-keyboard-layout{padding:5px;gap:3px}.arabic-keyboard-layout .keyboard-row{gap:3px}.arabic-keyboard-layout .keyboard-key{height:42px;padding-top:11px}.arabic-keyboard-layout .keyboard-key.tab,.arabic-keyboard-layout .keyboard-key.caps,.arabic-keyboard-layout .keyboard-key.shift{flex-basis:52px;font-size:8px}.arabic-keyboard-layout .keyboard-key.backspace,.arabic-keyboard-layout .keyboard-key.enter{flex-basis:60px;font-size:8px}.arabic-keyboard-layout .keyboard-key b{font-size:15px}.arabic-keyboard-layout .keyboard-key small{right:4px;font-size:7px}.arabic-keyboard-layout .keyboard-key.space{flex-basis:60%}.arabic-keyboard-help{font-size:9px}}

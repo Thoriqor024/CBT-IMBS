@@ -94,24 +94,24 @@ export default function StudentPortal({user,onLogout}) {
 
   return <div className="student-portal">
     <header className="portal-top">
-      <div className="portal-brand"><i className="portal-logo"><GraduationCap size={19}/></i><div><b>IMBS CBT</b><small>Ø¨ÙˆØ§Ø¨Ø© Ø§Ù„Ø·Ø§Ù„Ø¨</small></div></div>
+      <div className="portal-brand"><i className="portal-logo"><GraduationCap size={19}/></i><div><b>IMBS CBT</b></div></div>
       <div className="portal-user"><span>{user.name}</span><button onClick={onLogout}><LogOut size={14}/> Keluar</button></div>
     </header>
     <main className="portal-main">
-      <section className="portal-greeting"><small>Ø§Ù„Ø³Ù„Ø§Ù… Ø¹Ù„ÙŠÙƒÙ… ÙˆØ±Ø­Ù…Ø© Ø§Ù„Ù„Ù‡ ÙˆØ¨Ø±ÙƒØ§ØªÙ‡</small><h1>Selamat datang, {user.name}</h1><p>Pilih ujian yang sedang dibuka oleh pengawas.</p></section>
+      <section className="portal-greeting"><h1>Selamat datang, {user.name}</h1><p>Pilih ujian yang sedang dibuka oleh pengawas.</p></section>
       {error&&<div className="portal-error" role="alert"><AlertTriangle size={16}/>{error}<button onClick={loadExams}>Coba lagi</button></div>}
       <div className="portal-section-heading"><h2>Daftar ujian</h2><button onClick={loadExams} disabled={loading}><RefreshCw size={14}/> Perbarui</button></div>
-      {loading?<div className="portal-empty"><RefreshCw size={22}/><b>Memuat ujianâ€¦</b></div>:
+      {loading?<div className="portal-empty"><RefreshCw size={22}/><b>Memuat ujian¦</b></div>:
         exams.length?<div className="portal-exams">{exams.map(exam=><article className="portal-exam" key={exam.sessionId}>
           <i className="portal-exam-icon"><BookOpen size={19}/></i>
           <div className="portal-exam-info"><span className="portal-exam-state">{portalStatus(exam.sessionStatus,exam.examStatus)}</span>
-            <h3>{exam.title}</h3><p>{exam.subject} Â· {exam.grade ? `Kelas ${exam.grade} Â· ` : ''}{exam.topic} Â· {exam.durationMinutes} menit</p>
+            <h3>{exam.title}</h3><p>{exam.subject} Â· {exam.grade ? `Kelas ${exam.grade}  ` : ''}{exam.topic}  {exam.durationMinutes} menit</p>
             {exam.sessionStatus==='not_started'&&exam.examStatus==='active'&&!exam.pinReady&&<small className="portal-warning">Menunggu PIN dari pengawas.</small>}
           </div>
           {exam.sessionStatus==='not_started'&&exam.examStatus==='active'&&<button className="portal-start" disabled={!exam.pinReady} onClick={()=>selectExam(exam)}><LockKeyhole size={15}/> Masukkan PIN</button>}
           {exam.sessionStatus==='in_progress'&&<button className="portal-start" onClick={()=>selectExam(exam)}><BookOpen size={15}/> Lanjutkan</button>}
-          {exam.sessionStatus==='completed'&&<span className="portal-done"><CheckCircle2 size={15}/> Selesai Â· Nilai guru: {exam.score??'menunggu input'}</span>}
-          {exam.sessionStatus==='locked'&&<span className="portal-locked"><AlertTriangle size={15}/> Terkunci Â· Nilai guru: {exam.score??'menunggu input'}</span>}
+          {exam.sessionStatus==='completed'&&<span className="portal-done"><CheckCircle2 size={15}/> Selesai Nilai guru: {exam.score??'menunggu input'}</span>}
+          {exam.sessionStatus==='locked'&&<span className="portal-locked"><AlertTriangle size={15}/> Terkunci Nilai guru: {exam.score??'menunggu input'}</span>}
         </article>)}</div>:<div className="portal-empty"><BookOpen size={24}/><b>Belum ada ujian</b><span>Ujian akan muncul setelah admin mengaktifkannya.</span></div>}
       <aside className="portal-rules"><b>Catatan sebelum mulai</b><ul><li>Siapkan satu layar dan sambungkan jaringan sekolah.</li><li>Jawaban disimpan terenkripsi di perangkat sebelum disinkronkan.</li><li>Jika jaringan terputus, jawaban tetap tersimpan di perangkat. Sambungkan kembali untuk mengirim atau mengumpulkan ujian.</li><li>Pemeriksaan layar bergantung pada dukungan dan izin browser; pengawas tetap perlu memeriksa perangkat yang tidak mendukungnya.</li></ul></aside>
     </main>
@@ -141,7 +141,7 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
   const [draftReady,setDraftReady]=useState(false);
   const [index,setIndex]=useState(0);
   const [online,setOnline]=useState(navigator.onLine);
-  const [saveState,setSaveState]=useState('Memuat jawabanâ€¦');
+  const [saveState,setSaveState]=useState('Memuat jawaban');
   const [error,setError]=useState('');
   const [storageError,setStorageError]=useState('');
   const [seconds,setSeconds]=useState(0);
@@ -204,7 +204,7 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
   const syncPending=async()=>{
     if(syncPromiseRef.current)return syncPromiseRef.current;
     const job=(async()=>{
-      if(!navigator.onLine){setSaveState('Tersimpan lokal Â· menunggu jaringan');return false;}
+      if(!navigator.onLine){setSaveState('Tersimpan lokal menunggu jaringan');return false;}
       try{
         const drafts=(await getDrafts(session.id)).filter(item=>item.dirty).sort((a,b)=>a.sequence-b.sequence);
         for(const draft of drafts){
@@ -218,7 +218,7 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
             await refreshSessionStatus();
           }catch{}
         }
-        setSaveState('Tersimpan lokal Â· menunggu sinkronisasi');setError(err.message);return false;
+        setSaveState('Tersimpan lokal menunggu sinkronisasi');setError(err.message);return false;
       }
     })();
     syncPromiseRef.current=job;
@@ -266,7 +266,7 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
       }
     }catch{
       setOnline(false);
-      setProbeFeedback('Koneksi masih terputus. Jawaban tetap aman di IndexedDB perangkat.');
+      setProbeFeedback('Koneksi masih terputus. Jawaban tetap aman di perangkat.');
     }finally{
       setIsProbing(false);
       setTimeout(()=>setProbeFeedback(''),4000);
@@ -436,6 +436,29 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
     const next=current.slice(0,start)+character+current.slice(end);saveAnswer(question.id,next);
     requestAnimationFrame(()=>{element.focus();element.setSelectionRange(start+character.length,start+character.length);});
   };
+  const insertCombiningMark=mark=>{
+    const element=textareaRef.current;
+    if(!element||question?.type!=='essay')return;
+    const start=element.selectionStart,end=element.selectionEnd,current=String(answers[question.id]||'');
+    let insertion=start;
+    while(insertion<end&&/[\u064B-\u065F\u0670]/.test(current[insertion]))insertion++;
+    const next=current.slice(0,insertion)+mark+current.slice(end);saveAnswer(question.id,next);
+    requestAnimationFrame(()=>{element.focus();element.setSelectionRange(insertion+mark.length,insertion+mark.length);});
+  };
+  const deletePrevious=()=>{
+    const element=textareaRef.current;
+    if(!element||question?.type!=='essay')return;
+    const start=element.selectionStart,end=element.selectionEnd,current=String(answers[question.id]||'');
+    if(start===0&&end===0)return;
+    const from=start===end?Math.max(0,start-1):start;
+    const next=current.slice(0,from)+current.slice(end);saveAnswer(question.id,next);
+    requestAnimationFrame(()=>{element.focus();element.setSelectionRange(from,from);});
+  };
+  const handleAnswerKeyDown=event=>{
+    const key=event.key.toLowerCase();
+    const mark=ARABIC_HARAKAT[key]||((event.key==='~'||event.code==='Backquote')?ARABIC_HARAKAT['~']:null);
+    if(event.shiftKey&&mark){event.preventDefault();insertCombiningMark(mark);}
+  };
 
   if(isFinished)return <div className="exam-screen"><div className={`exam-finished-card ${session.status==='locked'?'locked':''}`}>
     {session.status==='locked'?<AlertTriangle size={36}/>:<CheckCircle2 size={36}/>}<h1>{session.status==='locked'?'سُجِّلَتْ مُخَالَفَةٌ':'تم تسليم الاختبار'}</h1>
@@ -560,8 +583,8 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
               const label=String.fromCharCode(65+i),chosen=answers[question.id]===label;
               return <button key={`${question.id}-${i}`} className={chosen?'chosen':''} disabled={!draftReady||screenBlocked||fullscreenLost||Boolean(storageError)||violationReviewRequired} onClick={()=>saveAnswer(question.id,label)}><span>{label}</span><b><FormulaText>{option}</FormulaText></b>{chosen&&<Check size={17}/>}</button>;
             })}</div>
-          ):<><textarea ref={textareaRef} className="essay-answer" dir="auto" value={answers[question.id]||''} disabled={!draftReady||screenBlocked||fullscreenLost||Boolean(storageError)||violationReviewRequired} onChange={e=>saveAnswer(question.id,e.target.value)} placeholder={session.languageCode==='ar'?'اكتب إجابتك هنا…':'Tulis jawaban di sini…'}/>
-            {session.languageCode==='ar'&&<div className="arabic-keyboard"><div className="keyboard-head"><b>لوحة المفاتيح العربية</b><button disabled={violationReviewRequired} onClick={()=>setShowKeyboard(!showKeyboard)}>{showKeyboard?'Sembunyikan':'Tampilkan'}</button></div>{showKeyboard&&!violationReviewRequired&&<ArabicKeyboard onInsert={insertArabic}/>}</div>}</>}
+          ):<><textarea ref={textareaRef} className="essay-answer" dir="auto" value={answers[question.id]||''} disabled={!draftReady||screenBlocked||fullscreenLost||Boolean(storageError)||violationReviewRequired} onKeyDown={handleAnswerKeyDown} onChange={e=>saveAnswer(question.id,e.target.value)} placeholder={session.languageCode==='ar'?'اكتب إجابتك هنا…':'Tulis jawaban di sini…'}/>
+            {session.languageCode==='ar'&&<div className="arabic-keyboard"><div className="keyboard-head"><b>لوحة المفاتيح العربية</b><button disabled={violationReviewRequired} onClick={()=>setShowKeyboard(!showKeyboard)}>{showKeyboard?'Sembunyikan':'Tampilkan'}</button></div>{showKeyboard&&!violationReviewRequired&&<ArabicKeyboard onInsert={insertArabic} onInsertMark={insertCombiningMark} onBackspace={deletePrevious} onEnter={()=>insertArabic('\n')}/>}</div>}</>}
         </article>
         <div className="exam-navigation"><button disabled={index===0||violationReviewRequired} onClick={()=>setIndex(x=>Math.max(0,x-1))}><ChevronLeft size={14}/>Sebelumnya</button><span>{answeredCount} dari {questions.length} soal terjawab</span><button className="next-question" disabled={index>=questions.length-1||violationReviewRequired} onClick={()=>setIndex(x=>Math.min(questions.length-1,x+1))}>Berikutnya<ChevronRight size={14}/></button></div>
       </>}
@@ -570,16 +593,35 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
   </div>;
 }
 
-function ArabicKeyboard({onInsert}){
-  const rows=['ض ۱ ۲ ۳ ۴ ۵ ۶ ۷ ۸ ۹ ۰ . ( ) - =',' ض ص ث ق ف غ ع ه خ ح ج د 1 2',' ش س ي ب ل ا ت ن م ك ط 3 4 5','ئ ء آ أ إ ة و ز ظ 6 7 8 9','; = [SPACE] - ? ! . ، 0'];
-  return <div>{rows.map((row,index)=><div className="keyboard-row" key={index}>{row.split(' ').map((letter,i)=>{if(letter==='[SPACE]')return <button key={`space-${index}`} className="space-key" onClick={()=>onInsert(' ')}>Ù…Ø³Ø§ÙØ©</button>;return <button key={`${letter}-${i}`} onClick={()=>onInsert(letter)}>{letter}</button>})}</div>)}</div>;
+const ARABIC_HARAKAT={q:'\u064e',e:'\u064f',a:'\u0650',x:'\u0652',w:'\u064b',r:'\u064c',s:'\u064d','`':'\u0651','~':'\u0651'};
+const ARABIC_KEYBOARD_ROWS=[
+  [{key:'`',label:'`',value:'\u0630'},...['1','2','3','4','5','6','7','8','9','0','-','='].map(key=>({key,label:key,value:key})),{special:'backspace',label:'⌫'}],
+  [{special:'tab',label:'TAB'},...['q','w','e','r','t','y','u','i','o','p','[',']','\\'].map((key,index)=>({key,label:key,value:['\u0636','\u0635','\u062b','\u0642','\u0641','\u063a','\u0639','\u0647','\u062e','\u062d','\u062c','\u062f','\\'][index]}))],
+  [{special:'caps',label:'CAPS'},...['a','s','d','f','g','h','j','k','l',';','\''].map((key,index)=>({key,label:key,value:['\u0634','\u0633','\u064a','\u0628','\u0644','\u0627','\u062a','\u0646','\u0645','\u0643','\u0637'][index]})),{special:'enter',label:'ENTER'}],
+  [{special:'shift',label:'SHIFT'},...['z','x','c','v','b','n','m',',','.','/'].map((key,index)=>({key,label:key,value:['\u0626','\u0621','\u0624','\u0631','\u0644\u0627','\u0649','\u0629','\u0648','\u0632','\u0638'][index]})),{special:'shift',label:'SHIFT'}],
+  [{special:'space',label:'SPACE'}],
+];
+
+function ArabicKeyboard({onInsert,onInsertMark,onBackspace,onEnter}){
+  const [shiftActive,setShiftActive]=useState(false);
+  const press=key=>{if(shiftActive&&ARABIC_HARAKAT[key])onInsertMark(ARABIC_HARAKAT[key]);else onInsert(key);};
+  const pressSpecial=special=>{if(special==='backspace')onBackspace();else if(special==='enter')onEnter();else if(special==='tab')onInsert('\t');else if(special==='space')onInsert(' ');else if(special==='shift')setShiftActive(current=>!current);};
+  return <div className={`arabic-keyboard-layout${shiftActive?' shift-active':''}`}>
+    {ARABIC_KEYBOARD_ROWS.map((row,rowIndex)=><div className={`keyboard-row keyboard-row-${rowIndex+1}`} key={rowIndex}>{row.map((item,index)=>{
+      const display=item.key&&shiftActive&&ARABIC_HARAKAT[item.key]?ARABIC_HARAKAT[item.key]:item.value||item.label;
+      return <button type="button" className={`keyboard-key ${item.special||''}`} key={`${rowIndex}-${index}`} onClick={()=>item.special?pressSpecial(item.special):press(item.key)} aria-label={item.special||item.key}>
+        {item.key&&<small>{item.label}</small>}<b>{display}</b>
+      </button>;
+    })}</div>)}
+    <p className="arabic-keyboard-help">Gunakan Shift untuk harakat: Fathah Shift+Q, Dammah Shift+E, Kasrah Shift+A, Sukun Shift+X, Fathah Tanwin Shift+W, Dammah Tanwin Shift+R, Kasrah Tanwin Shift+S, Tasydid Shift+~.</p>
+  </div>;
 }
 
 function portalStatus(sessionStatus,examStatus){
-  if(sessionStatus==='locked')return 'ØªÙŽØ±Ù’ÙƒÙÙŠÙ’Ø²Ù Ø§Ù„Ù…ÙØ±ÙŽØ§Ù‚ÙŽØ¨ÙŽØ©Ù Â· TERKUNCI';
-  if(sessionStatus==='completed')return 'Ø§ÙÙƒÙ’ØªÙŽÙ…ÙŽÙ„ÙŽ Â· SELESAI';
-  if(sessionStatus==='in_progress')return 'Ø¬ÙŽØ§Ø±Ù Ø§Ù„Ø¢Ù† Â· SEDANG DIKERJAKAN';
-  return examStatus==='active'?'Ù…ÙØªÙŽØ§Ø­ÙŒ Ø§Ù„Ø¢Ù† Â· TERSEDIA':'Menunggu jadwal';
+  if(sessionStatus==='locked')return 'TERKUNCI';
+  if(sessionStatus==='completed')return 'SELESAI';
+  if(sessionStatus==='in_progress')return 'SEDANG DIKERJAKAN';
+  return examStatus==='active'?'TERSEDIA':'Menunggu jadwal';
 }
 
 function formatTime(value){const seconds=Math.max(0,Number(value)||0);return `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;}
