@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api';
-import { RefreshCw, Clock3, ChevronDown, ChevronUp, Wifi, WifiOff, Check, X, CircleAlert, RotateCcw } from 'lucide-react';
+import { RefreshCw, Clock3, ChevronDown, ChevronUp, Wifi, WifiOff, Check, X, CircleAlert, RotateCcw, Search } from 'lucide-react';
 
 const eventLabels = {
   tab_hidden: 'Tab ujian tersembunyi',
@@ -54,23 +54,25 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
     </div>
     {error && <div className="monitor-dashboard-error" role="alert"><CircleAlert size={15}/>{error}</div>}
     <div className="admin-monitor-grid">
-      <MonitorPanel title="Siswa dengan pelanggaran" count={violations.length} note="Tinjau bukti sebelum menetapkan keputusan." empty="Belum ada siswa yang terindikasi melanggar." loading={loading}>
-        <MonitorTable students={violations} expanded={expanded} toggle={toggle} now={now} busy={busy} onReviewEvent={onReviewEvent} onReviewSession={onReviewSession} onViolation={onViolation} onReset={onReset} canRecordViolation={canRecordViolation} showReviewActions />
+      <MonitorPanel title="Siswa dengan pelanggaran" students={violations} count={violations.length} note="Tinjau bukti sebelum menetapkan keputusan." empty="Belum ada siswa yang terindikasi melanggar." loading={loading}>
+        {filtered => <MonitorTable students={filtered} expanded={expanded} toggle={toggle} now={now} busy={busy} onReviewEvent={onReviewEvent} onReviewSession={onReviewSession} onViolation={onViolation} onReset={onReset} canRecordViolation={canRecordViolation} showReviewActions />}
       </MonitorPanel>
-      <MonitorPanel title="Sedang mengikuti ujian" count={active.length} note="Log tersedia pada setiap peserta." empty="Tidak ada siswa yang sedang mengerjakan ujian." loading={loading}>
-        <MonitorTable students={active} expanded={expanded} toggle={toggle} now={now} busy={busy} onReviewEvent={onReviewEvent} onReviewSession={onReviewSession} onViolation={onViolation} onReset={onReset} canRecordViolation={canRecordViolation} />
+      <MonitorPanel title="Sedang mengikuti ujian" students={active} count={active.length} note="Log tersedia pada setiap peserta." empty="Tidak ada siswa yang sedang mengerjakan ujian." loading={loading}>
+        {filtered => <MonitorTable students={filtered} expanded={expanded} toggle={toggle} now={now} busy={busy} onReviewEvent={onReviewEvent} onReviewSession={onReviewSession} onViolation={onViolation} onReset={onReset} canRecordViolation={canRecordViolation} />}
       </MonitorPanel>
-      <MonitorPanel title="Selesai ujian" count={completed.length} note="Riwayat peserta yang telah mengumpulkan ujian." empty="Belum ada siswa yang menyelesaikan ujian." loading={loading}>
-        <MonitorTable students={completed} expanded={expanded} toggle={toggle} now={now} busy={busy} onReviewEvent={onReviewEvent} onReviewSession={onReviewSession} onViolation={onViolation} onReset={onReset} canRecordViolation={canRecordViolation} />
+      <MonitorPanel title="Selesai ujian" students={completed} count={completed.length} note="Riwayat peserta yang telah mengumpulkan ujian." empty="Belum ada siswa yang menyelesaikan ujian." loading={loading}>
+        {filtered => <MonitorTable students={filtered} expanded={expanded} toggle={toggle} now={now} busy={busy} onReviewEvent={onReviewEvent} onReviewSession={onReviewSession} onViolation={onViolation} onReset={onReset} canRecordViolation={canRecordViolation} />}
       </MonitorPanel>
     </div>
   </>;
 }
 
-function MonitorPanel({ title, count, note, empty, loading, children }) {
+function MonitorPanel({ title, students, count, note, empty, loading, children }) {
+  const [query, setQuery] = useState('');
+  const filtered = students.filter(student => String(student.name || '').toLocaleLowerCase('id-ID').includes(query.toLocaleLowerCase('id-ID').trim()));
   return <section className="panel admin-monitor-panel">
     <div className="panel-head"><div><h2>{title}</h2><p>{count} siswa · {note}</p></div><span className="monitor-count">{count}</span></div>
-    {loading ? <div className="monitor-dashboard-empty">Memuat data pemantauan…</div> : count ? children : <div className="monitor-dashboard-empty">{empty}</div>}
+    {loading ? <div className="monitor-dashboard-empty">Memuat data pemantauan…</div> : count ? <><label className="monitor-search"><Search size={14}/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Cari nama siswa..." aria-label={`Cari nama siswa pada card ${title}`}/></label>{filtered.length ? children(filtered) : <div className="monitor-dashboard-empty">Tidak ada siswa dengan nama tersebut.</div>}</> : <div className="monitor-dashboard-empty">{empty}</div>}
   </section>;
 }
 
