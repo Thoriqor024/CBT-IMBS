@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
     "api": "node server/index.js",
+    "test:tenant-integration": "node --test server/tenantIsolation.integration.test.js",
     "bootstrap:platform-owner": "node server/bootstrap-platform-owner.js",
     "bootstrap:control-plane-owner": "node server/bootstrap-control-plane-owner.js",
     "setup:local-control-plane": "node scripts/setup-local-control-plane.mjs",

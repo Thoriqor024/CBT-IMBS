@@ -5,6 +5,46 @@ catat semua progresmu dengan rapi disini, dengan aturan;
 
 !!aturan ini wajib diikuti untuk memudahkan pengembangan sudah sampai mana!!
 
+## Critical Gate — cutover/pilot publik ditahan sampai pemetaan akun dan uji cutover disetujui — 2 November 2026, 08.40 WIB
+
+- Titik kritis: pilot lokal dan loopback HTTP tidak boleh dipakai untuk cutover data IMBS atau deployment publik. Akses dan route hanya untuk validasi teknis lokal, tidak untuk sekolah, tenant produksi, atau data nyata.
+- Kondisi saat ini: database legacy belum memiliki kolom email, akun belum dipetakan ke email, dan tenant terdaftar yang ada hanya berisi admin awal. Karena itu, tidak ada pengalihan akun siswa/guru/sekolah ke pilot lokal yang aman dilakukan. Tidak ada migrasi data IMBS, tinjauan privasi, atau deployment cloud yang boleh dijalankan sebelum pemetaan akun dan cutover test disetujui.
+- Risiko yang harus ditutup: data sekolah/produksi yang diarahkan ke pilot lokal tanpa mapping akun bisa mengakibatkan identitas tidak konsisten, akses tidak valid, kebocoran data, dan rollback yang tidak aman. Pilot lokal tidak boleh diposisikan sebagai environment publik, staging produksi, atau target cutover apapun.
+- Keputusan operasional yang dipertahankan: pilot ini tetap loopback-only, no public exposure, no redirect dari sekolah atau tenant aktif, dan no production data movement. Semua cutover data IMBS atau migrasi cloud ditunda sampai ada pemetaan akun email yang valid, pemastian data owner/tenant, dan uji cutover yang disetujui oleh pemilik data.
+- Verifikasi kode yang tersisa: `npm run build` lulus, `npm test` lulus 110/110, dan perbaikan `Menu`/guard `platform_owner` menjamin tidak ada crash runtime atau syntax error pada JSX yang aktif. Tidak ada deployment public, cloud, atau cutover data yang dilakukan.
+- Catatan risiko: ini adalah blocking gate sebelum kehilangan akses server; bila server dibatasi atau sesi hilang, semua perubahan yang memindahkan data sekolah atau membuat akun baru ke pilot harus dihentikan sampai persetujuan cutover diterima.
+
+## UI — Platform Control dipindah dan dirapikan — 2 November 2026, 15.12 WIB
+
+- Memindahkan `PlatformOwnerConsole` aktif dari `src/App.jsx` ke `src/PlatformOwnerConsole.jsx`, mengganti implementasi stale yang sebelumnya tidak dirender, dan membuat App merender modul standalone. Helper `roleLabel` tetap di App karena masih digunakan dashboard sekolah.
+- Menambahkan gaya yang seluruhnya di-scope pada `.platform-owner-console`: heading/status readiness, metrik non-interaktif, form provisioning adaptif, panel arsitektur, tabel tenant semantik dengan scroll lokal, status badge, modal kredensial/edit, focus state, dan navigasi sidebar untuk mobile. Handler/API, quota, provisioning, one-time credential, dan aksi tenant tetap dipertahankan.
+- Menghapus inline styles dari dashboard utama dan mengganti tabel div/grid tetap dengan tabel HTML responsif. Tidak ada perubahan API, database, record tenant, atau kredensial.
+- Validasi: `npm run build` lulus; `npm test` lulus 110/110; diagnostics App dan komponen bersih; pencarian tidak menemukan inline `style` atau definisi komponen duplikat; `git diff --check` lulus.
+- Pilot lokal dibangun ulang tanpa menyentuh container legacy/database. API legacy, PostgreSQL, dan pilot healthy; `http://127.0.0.1:8180/` dan `/api/health` merespons 200.
+- Batas pemeriksaan: browser bersama tidak memiliki sesi platform-owner, jadi dashboard setelah login tidak dapat diperiksa secara visual. Verifikasi layout yang tersisa perlu dilakukan setelah owner login; jangan menggunakan password demo.
+- Warning build yang sudah ada tetap muncul: `NODE_ENV` dari `.env` dan bundle JS >500 kB. Tidak ada error build.
+
+## SaaS — Backup/restore, tes dua tenant, dan pilot lokal — 2 November 2026, 14.33 WIB
+
+- Menjalankan backup konsisten setelah menghentikan API lokal sebentar; API otomatis dinyalakan kembali. Recovery point berada di `%LOCALAPPDATA%\CBT-IMBS\recovery\20261102_141758_local_saas`, di luar repo dengan ACL untuk akun Windows saat ini. Snapshot mencakup database legacy, control-plane, database setiap tenant terdaftar, role PostgreSQL, 102 berkas media (3.971.083 byte), dan master key 32 byte. Tidak ada backup lama yang ditimpa.
+- Verifikasi backup: 107 file lulus pemeriksaan ukuran dan SHA-256; tiga dump lulus `pg_restore --list`.
+- Restore drill lulus di container PostgreSQL 17 baru, loopback-only, tanpa volume/data aktif: tiga database dipulihkan, row-count semua tabel cocok dengan manifest, dan 102 file media cocok hash. Container serta direktori restore sementara dibersihkan; backup sumber dipertahankan.
+- Menambahkan `scripts/backup-local-saas.ps1` dan `scripts/restore-local-saas.mjs` untuk mengulang backup/restore lokal dengan perlindungan overwrite dan pemulihan target terisolasi.
+- Menambahkan `server/tenantIsolation.integration.test.js` dan perintah `npm run test:tenant-integration`. Tes memakai container PostgreSQL dan dua tenant acak yang dibuang sesudah tes; menguji login valid/tidak valid, header sekolah palsu, pemisahan siswa/mapel, kuota siswa/staff pada request bersamaan, pembuatan bank, PIN, runner siswa, kunci jawaban tidak terkirim, autosave, submit, serta isolasi akses media/ujian. Hasil: 1/1 test lulus.
+- Menambahkan `docker-compose.saas-pilot.yml`. Service `cbt-imbs-saas-pilot` berjalan dengan tenancy aktif pada `http://127.0.0.1:8180`, menggunakan control-plane lokal yang sama dan volume media pilot terpisah. Bind hanya ke loopback; cookie non-Secure hanya karena pilot menggunakan HTTP lokal. Layanan legacy tetap single-tenant dan tidak dipindahkan atau direstart saat pilot dinyalakan.
+- Pemeriksaan akhir: API legacy dan pilot sehat; data legacy tetap 50 user, 45 siswa, 56 bank, 2 ujian, 45 sesi, 102 media; control-plane tetap 1 tenant, 1 owner aktif, 2 secret terenkripsi. Tidak ada container integration/restore yang tertinggal.
+- Validasi: `npm test` lulus 110/110; `npm run test:tenant-integration` lulus 1/1; `npm run build` lulus; diagnostics dan `git diff --check` bersih. Playwright mengonfirmasi halaman login menampilkan kode sekolah, email, dan password. Console hanya mencatat favicon 404. Build masih menampilkan warning `NODE_ENV` dari `.env` dan chunk bundle >500 kB.
+- Batas pilot: database tenant terdaftar yang ada hanya berisi admin awal; database legacy aktif masih memakai schema lama tanpa kolom email dan menyimpan data akademik. Jangan alihkan/cutover sekolah IMBS sebelum ada pemetaan email akun yang disahkan, migrasi copy-first, parity data/media, serta tes penerimaan CBT. Tinjauan privasi, SLO/beban, retensi/support, dan deployment publik belum ditutup. Tidak ada deploy cloud.
+
+## SaaS — Perbaikan race kuota tenant — 2 November 2026, 13.34 WIB
+
+- Memulai implementasi untuk target pilot multi-tenant Docker lokal sesuai rencana proyek. Pemeriksaan awal read-only: Docker Engine/Compose merespons; API dan PostgreSQL sehat; runtime masih single-tenant (`TENANCY_ENABLED=false`). Tidak ada container yang direstart, database/volume yang diubah, atau nilai secret yang dibaca.
+- Memindahkan pemeriksaan kuota ke transaksi yang sama dengan pembuatan akun. Transaksi mengunci row singleton `school_settings` sebelum menghitung jumlah akun, sehingga permintaan tambah/import siswa atau staff yang bersamaan tidak dapat sama-sama memakai slot kuota terakhir.
+- Mencakup empat alur tenant: tambah siswa, import siswa, tambah staff, dan import staff. Bootstrap seed legacy dan admin awal provisioner tidak diubah.
+- Menambah tes lock-before-count dan penolakan import yang melebihi kuota. `npm test` lulus 110/110, `npm run build` lulus, `node --check` untuk file server/test lulus, diagnostics bersih, dan `git diff --check` lulus.
+- Tes baru memverifikasi urutan lock dan hitung melalui mock; belum ada tes konkurensi end-to-end terhadap PostgreSQL. Fitur tenant tetap belum diaktifkan dan aplikasi berjalan pada konfigurasi single-tenant.
+- Langkah aman berikutnya: verifikasi recovery point database+media yang baru sebelum perubahan skema/runtime, lalu jalankan onboarding dan isolasi dua tenant pada stack lokal terpisah. Backup/restore SaaS dan kesiapan deployment publik masih belum selesai.
+
 ## SaaS — Recovery point sebelum Wave 2 — 12 Oktober 2026, 18.33 WIB
 
 - Sebelum pekerjaan control-plane berikutnya, dibuat snapshot baru di `%LOCALAPPDATA%\CBT-IMBS\recovery\20261012_pre_wave2_post_bootstrap` dengan ACL hanya untuk akun Windows saat ini.

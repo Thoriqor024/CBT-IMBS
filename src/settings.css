@@ -58,3 +58,133 @@
 .settings-list-hint{display:block;margin-top:13px;color:#99a3b0;font-size:9px;line-height:1.5}
 @media(max-width:960px){.settings-grid{grid-template-columns:1fr;gap:18px}.settings-col{gap:18px}.settings-card{padding:18px}}
 @media(max-width:650px){.settings-fields-row{grid-template-columns:1fr}.settings-list-input .secondary{padding:0 9px}}
+
+.platform-owner-console{
+	--platform-ink:#183238;
+	--platform-muted:#687d80;
+	--platform-line:#dfe8e6;
+	--platform-green:#14745b;
+	--platform-surface:#fff;
+	background:#f2f5f4;
+	color:var(--platform-ink);
+}
+.platform-owner-console .main-area{background:#f2f5f4}
+.platform-owner-console .platform-topbar{background:rgba(255,255,255,.94);border-bottom-color:#e3ebe9}
+.platform-owner-console .platform-content{width:min(100%,1500px);margin:0 auto;padding:30px clamp(18px,3vw,42px) 46px}
+.platform-owner-console .platform-page-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:22px;margin:0 0 23px}
+.platform-owner-console .platform-eyebrow,.platform-owner-console .platform-section-kicker{display:block;color:#74898c;font-size:10px;font-weight:700;line-height:1.3;text-transform:uppercase}
+.platform-owner-console .platform-page-heading h1{margin:7px 0 5px;color:#183238;font-family:Manrope,sans-serif;font-size:27px;font-weight:800;line-height:1.15}
+.platform-owner-console .platform-page-heading p{margin:0;color:var(--platform-muted);font-size:12px;line-height:1.5}
+.platform-owner-console .platform-readiness{display:inline-flex;align-items:center;gap:8px;flex-shrink:0;padding:9px 12px;border:1px solid var(--platform-line);border-radius:8px;background:#fff;color:#546a6d;font-size:11px;font-weight:700}
+.platform-owner-console .platform-readiness.is-ready{border-color:#cfe4dc;background:#f3faf7;color:#17694f}
+.platform-owner-console .platform-readiness.is-locked{border-color:#eadfc9;background:#fffaf0;color:#8b6a2f}
+.platform-owner-console .platform-readiness-dot{width:7px;height:7px;border-radius:50%;background:#c59b4b}
+.platform-owner-console .platform-readiness.is-ready .platform-readiness-dot{background:#24966c}
+.platform-owner-console .platform-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin-bottom:16px}
+.platform-owner-console .platform-metric{position:relative;display:grid;grid-template-columns:38px minmax(0,1fr);align-content:start;align-items:start;gap:12px;min-width:0;min-height:120px;padding:17px 16px 15px;overflow:hidden;border:1px solid var(--platform-line);border-radius:8px;background:var(--platform-surface);box-shadow:0 2px 6px #173a3010}
+.platform-owner-console .platform-metric::before{position:absolute;inset:0 auto 0 0;width:3px;background:var(--metric-accent);content:""}
+.platform-owner-console .platform-metric-blue{--metric-accent:#337ea2;--metric-tint:#edf5f9}
+.platform-owner-console .platform-metric-violet{--metric-accent:#7165a6;--metric-tint:#f2f0f8}
+.platform-owner-console .platform-metric-amber{--metric-accent:#bd8738;--metric-tint:#fbf5e9}
+.platform-owner-console .platform-metric-green{--metric-accent:#258366;--metric-tint:#edf7f2}
+.platform-owner-console .platform-metric-icon{display:grid;place-items:center;width:38px;height:38px;border-radius:8px;background:var(--metric-tint);color:var(--metric-accent)}
+.platform-owner-console .platform-metric>div{display:grid;gap:3px;min-width:0}
+.platform-owner-console .platform-metric small{color:#738689;font-size:10px;font-weight:600;line-height:1.35}
+.platform-owner-console .platform-metric strong{color:#1b3439;font-family:Manrope,sans-serif;font-size:20px;font-weight:800;line-height:1.2;overflow-wrap:anywhere}
+.platform-owner-console .platform-metric>div>span{color:#849497;font-size:10px;line-height:1.4;overflow-wrap:anywhere}
+.platform-owner-console .platform-overview-grid{display:grid;grid-template-columns:minmax(0,1.22fr) minmax(340px,.78fr);align-items:stretch;gap:15px}
+.platform-owner-console .platform-panel{min-width:0;padding:20px;border:1px solid var(--platform-line);border-radius:8px;background:var(--platform-surface);box-shadow:0 2px 7px #173a300b}
+.platform-owner-console .platform-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}
+.platform-owner-console .platform-section-head h2{margin:5px 0 4px;color:#20393e;font-family:Manrope,sans-serif;font-size:15px;font-weight:800;line-height:1.35}
+.platform-owner-console .platform-section-head p{max-width:660px;margin:0;color:#74878a;font-size:11px;line-height:1.55}
+.platform-owner-console .platform-onboarding-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:14px 16px}
+.platform-owner-console .platform-field{display:grid;align-content:start;gap:6px;min-width:0;color:#4f6669;font-size:11px;font-weight:700}
+.platform-owner-console .platform-field input,.platform-owner-console .platform-modal-form input,.platform-owner-console .platform-modal-form select{width:100%;height:39px;min-width:0;padding:0 11px;border:1px solid #dce5e3;border-radius:6px;outline:0;background:#fff;color:#233b3f;font-size:12px;font-weight:500;transition:border-color .15s,box-shadow .15s}
+.platform-owner-console .platform-field input:focus,.platform-owner-console .platform-modal-form input:focus,.platform-owner-console .platform-modal-form select:focus{border-color:#26866a;box-shadow:0 0 0 3px #26866a20}
+.platform-owner-console .platform-field input:disabled,.platform-owner-console .platform-modal-form input:disabled,.platform-owner-console .platform-modal-form select:disabled{background:#f2f5f4;color:#859496;cursor:not-allowed}
+.platform-owner-console .platform-field-help{color:#829294;font-size:10px;font-weight:400;line-height:1.45}
+.platform-owner-console .platform-field-trial{grid-column:span 1}
+.platform-owner-console .platform-quota-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;min-width:0}
+.platform-owner-console .platform-form-submit{grid-column:1/-1;margin-top:3px}
+.platform-owner-console .platform-form-submit .primary{display:flex;justify-content:center;width:100%;min-height:42px;border-radius:6px;background:#176f57;font-size:12px;font-weight:700;box-shadow:none}
+.platform-owner-console .platform-form-submit .primary:hover:not(:disabled){background:#105d49;box-shadow:0 4px 12px #176f5726;transform:translateY(-1px)}
+.platform-owner-console .platform-form-submit .primary:disabled{opacity:.52;cursor:not-allowed;transform:none}
+.platform-owner-console .platform-message{grid-column:1/-1;display:flex;align-items:flex-start;gap:8px;padding:10px 12px;border-radius:6px;font-size:11px;line-height:1.5}
+.platform-owner-console .platform-message-success{border:1px solid #cae7d8;background:#f0faf4;color:#17694f}
+.platform-owner-console .platform-message-error{border:1px solid #efd0cd;background:#fff5f3;color:#9e4139}
+.platform-owner-console .platform-message svg{flex:0 0 auto;margin-top:1px}
+.platform-owner-console .platform-architecture-list{display:grid}
+.platform-owner-console .platform-architecture-item{display:flex;align-items:center;justify-content:space-between;gap:14px;min-width:0;padding:12px 2px;border-bottom:1px solid #edf1f0}
+.platform-owner-console .platform-architecture-item:last-child{border-bottom:0}
+.platform-owner-console .platform-architecture-item>span{display:grid;gap:3px;min-width:0}
+.platform-owner-console .platform-architecture-item b{color:#344d51;font-size:11px;font-weight:700}
+.platform-owner-console .platform-architecture-item small{color:#849396;font-size:10px;overflow-wrap:anywhere}
+.platform-owner-console .platform-architecture-item>svg{flex:0 0 auto;color:#718589}
+.platform-owner-console .platform-tenants-panel{margin-top:15px}
+.platform-owner-console .platform-tenants-heading{align-items:center;margin-bottom:12px}
+.platform-owner-console .platform-refresh-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:34px;padding:0 11px;border:1px solid #dce6e3;border-radius:6px;background:#fff;color:#50676a;font-size:11px;font-weight:700}
+.platform-owner-console .platform-refresh-button:hover{border-color:#a9cdbf;background:#f5faf7;color:#176f57}
+.platform-owner-console .platform-table-scroll{width:100%;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#c7d6d1 transparent}
+.platform-owner-console .platform-tenant-table{width:100%;min-width:940px;border-collapse:collapse;text-align:left}
+.platform-owner-console .platform-tenant-table th{padding:10px 11px;border-bottom:1px solid #dfe8e6;color:#788b8d;font-size:9px;font-weight:800;text-transform:uppercase;white-space:nowrap}
+.platform-owner-console .platform-tenant-table td{padding:12px 11px;border-bottom:1px solid #edf1f0;color:#52686b;font-size:11px;vertical-align:middle}
+.platform-owner-console .platform-tenant-table tbody tr:last-child td{border-bottom:0}
+.platform-owner-console .platform-tenant-table tbody tr:hover{background:#f8faf9}
+.platform-owner-console .platform-tenant-code{color:#235e53;font-weight:800}
+.platform-owner-console .platform-tenant-name{min-width:150px;color:#263f43;font-weight:700}
+.platform-owner-console .platform-tenant-database{max-width:220px;color:#718386;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.platform-owner-console .platform-tenant-quota,.platform-owner-console .platform-tenant-expiry{white-space:nowrap}
+.platform-owner-console .platform-tenant-quota span{color:#9aa8a8}
+.platform-owner-console .platform-status{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border:1px solid transparent;border-radius:5px;font-size:9px;font-weight:800;text-transform:uppercase;white-space:nowrap}
+.platform-owner-console .platform-status::before{width:6px;height:6px;border-radius:50%;background:currentColor;content:""}
+.platform-owner-console .platform-status-active{border-color:#cce5d8;background:#eff8f2;color:#1c7857}
+.platform-owner-console .platform-status-trial{border-color:#e9dfc5;background:#fcf8ed;color:#9a702c}
+.platform-owner-console .platform-status-suspended,.platform-owner-console .platform-status-closed{border-color:#edd3d0;background:#fff3f1;color:#a54e47}
+.platform-owner-console .platform-tenant-actions{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.platform-owner-console .platform-tenant-actions .secondary{min-height:30px;padding:0 8px;border:1px solid #dce6e3;border-radius:5px;background:#fff;color:#496166;font-size:10px;font-weight:700}
+.platform-owner-console .platform-tenant-actions .secondary:hover:not(:disabled){border-color:#a9cdbf;background:#f5faf7;color:#176f57}
+.platform-owner-console .platform-tenant-actions .secondary:disabled{opacity:.5;cursor:wait}
+.platform-owner-console .platform-empty-state{display:grid;place-items:center;min-height:150px;padding:24px;color:#7a8b8d;font-size:12px;text-align:center}
+.platform-owner-console .platform-modal{width:min(600px,calc(100vw - 28px));max-width:600px;max-height:calc(100vh - 28px);border:1px solid #dfe8e6;border-radius:9px;box-shadow:0 24px 70px #173a3029}
+.platform-owner-console .platform-edit-modal{width:min(500px,calc(100vw - 28px));max-width:500px}
+.platform-owner-console .platform-modal-body{display:grid;gap:12px;padding:17px 22px}
+.platform-owner-console .platform-warning{display:flex;align-items:flex-start;gap:9px;padding:12px;border:1px solid #ead9ad;border-radius:6px;background:#fff9eb;color:#735523;font-size:11px;line-height:1.5}
+.platform-owner-console .platform-warning svg{flex:0 0 auto;color:#a47a2c}
+.platform-owner-console .platform-credentials-list{display:grid;gap:2px;padding:9px;border:1px solid #e6ecea;border-radius:6px;background:#f7f9f8}
+.platform-owner-console .platform-credentials-list .quick-item{min-width:0;padding:8px 7px;border-bottom:1px solid #e7edeb}
+.platform-owner-console .platform-credentials-list .quick-item:last-of-type{border-bottom:0}
+.platform-owner-console .platform-credentials-list .quick-item small{overflow-wrap:anywhere}
+.platform-owner-console .platform-credential-password{padding:10px;border:1px solid #cfe4dc;border-radius:6px;background:#fff;color:#17694f}
+.platform-owner-console .platform-credential-password b{font-size:10px}
+.platform-owner-console .platform-password-value{margin-top:5px;color:#20383d;font-size:14px;font-weight:800;overflow-wrap:anywhere}
+.platform-owner-console .platform-modal-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;padding:14px 22px;border-top:1px solid #e8eeec}
+.platform-owner-console .platform-modal-actions button{min-height:36px;border-radius:6px;font-size:11px}
+.platform-owner-console .platform-modal-form{display:grid;gap:13px;padding:17px 22px}
+.platform-owner-console .platform-edit-quotas{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.platform-owner-console .platform-modal-form>label{display:grid;gap:6px;color:#4f6669;font-size:11px;font-weight:700}
+.platform-owner-console .platform-modal-form .platform-modal-actions{padding:12px 0 0;border-top:0}
+.platform-owner-console .platform-modal-form .login-error{margin:0}
+.platform-owner-console>.scrim{padding:0;border:0}
+.platform-owner-console button:focus-visible,.platform-owner-console input:focus-visible,.platform-owner-console select:focus-visible{outline:2px solid #287f66;outline-offset:2px}
+@media(max-width:1080px){.platform-owner-console .platform-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.platform-owner-console .platform-overview-grid{grid-template-columns:1fr}}
+@media(max-width:700px){
+	.platform-owner-console .platform-content{padding:22px 14px 32px}
+	.platform-owner-console .platform-page-heading{align-items:flex-start;flex-direction:column;gap:12px;margin-bottom:17px}
+	.platform-owner-console .platform-page-heading h1{font-size:23px}
+	.platform-owner-console .platform-metrics{grid-template-columns:1fr 1fr;gap:8px}
+	.platform-owner-console .platform-metric{grid-template-columns:32px minmax(0,1fr);gap:9px;min-height:105px;padding:13px 10px}
+	.platform-owner-console .platform-metric-icon{width:32px;height:32px}
+	.platform-owner-console .platform-metric strong{font-size:17px}
+	.platform-owner-console .platform-panel{padding:15px}
+	.platform-owner-console .platform-onboarding-form{grid-template-columns:1fr;gap:12px}
+	.platform-owner-console .platform-field-trial,.platform-owner-console .platform-form-submit,.platform-owner-console .platform-message{grid-column:1}
+	.platform-owner-console .platform-tenants-heading{align-items:flex-start;flex-direction:column}
+	.platform-owner-console .platform-refresh-button{align-self:flex-end}
+	.platform-owner-console .platform-modal-actions{justify-content:stretch}
+	.platform-owner-console .platform-modal-actions button{flex:1}
+}
+@media(max-width:420px){
+	.platform-owner-console .platform-metrics{grid-template-columns:1fr}
+	.platform-owner-console .platform-metric{min-height:86px}
+	.platform-owner-console .platform-quota-fields,.platform-owner-console .platform-edit-quotas{grid-template-columns:1fr}
+}

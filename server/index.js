@@ -31,7 +31,7 @@ import { normalizeAccountEmail } from './userIdentity.js';
 import { createPlatformManagement } from './platformManagement.js';
 import { createPlatformAuthenticator } from './platformAuthentication.js';
 import { buildSeedAccounts, isLegacyBootstrapSeedEnabled } from './seedAccounts.js';
-import { assertStudentQuota, assertTeacherQuota } from './tenantQuota.js';
+import { assertStudentQuotaInTransaction, assertTeacherQuotaInTransaction } from './tenantQuota.js';
 import { validateSubjectInput } from './subjectValidation.js';
 import { calculateItemDifficulty } from './itemAnalysis.js';
 
@@ -854,18 +854,20 @@ app.post('/api/students',allow('admin'),asyncRoute(async(req,res)=>{
   const email=normalizeAccountEmail(req.body?.email,{required:Boolean(tenantRuntime)});
   if(!name||!className)return res.status(400).json({error:'Nama dan kelas wajib diisi.'});
   const tenant=tenantRuntime?.context.getCurrent()?.tenant;
-  if(tenant?.maxStudents){
-    const countQuery=await pool.query("SELECT count(*)::int AS count FROM users WHERE role='student' AND active=TRUE");
-    assertStudentQuota({currentCount:countQuery.rows[0]?.count,additionalCount:1,maxStudents:tenant.maxStudents});
-  }
-  const username=await uniqueUsername();
   const token=randomBytes(6).toString('hex').toUpperCase();
   const passwordHash=await bcrypt.hash(token,10);
-  const q=tenantRuntime
-    ? await pool.query('INSERT INTO users(username,email,full_name,role,password_hash,class_name) VALUES($1,$2,$3,\'student\',$4,$5) RETURNING id,username,email,full_name AS name,class_name AS "className"',[username,email,name,passwordHash,className])
-    : await pool.query('INSERT INTO users(username,full_name,role,password_hash,class_name) VALUES($1,$2,\'student\',$3,$4) RETURNING id,username,full_name AS name,class_name AS "className"',[username,name,passwordHash,className]);
-  await audit(pool,req.session.user.id,'student.create',{studentId:q.rows[0].id});
-  res.status(201).json({...q.rows[0],token});
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    if(tenant)await assertStudentQuotaInTransaction(client,{maxStudents:tenant.maxStudents});
+    const username=await uniqueUsername(client);
+    const q=tenantRuntime
+      ? await client.query('INSERT INTO users(username,email,full_name,role,password_hash,class_name) VALUES($1,$2,$3,\'student\',$4,$5) RETURNING id,username,email,full_name AS name,class_name AS "className"',[username,email,name,passwordHash,className])
+      : await client.query('INSERT INTO users(username,full_name,role,password_hash,class_name) VALUES($1,$2,\'student\',$3,$4) RETURNING id,username,full_name AS name,class_name AS "className"',[username,name,passwordHash,className]);
+    await audit(client,req.session.user.id,'student.create',{studentId:q.rows[0].id});
+    await client.query('COMMIT');
+    res.status(201).json({...q.rows[0],token});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }));
 app.post('/api/students/import',allow('admin'),asyncRoute(async(req,res)=>{
   const rows=req.body.rows;
@@ -873,10 +875,6 @@ app.post('/api/students/import',allow('admin'),asyncRoute(async(req,res)=>{
   const validRows=rows.filter(r=>String(r.name||'').trim()&&String(r.className||'').trim());
   if(!validRows.length)return res.status(400).json({error:'Tidak ada baris siswa yang valid untuk diimpor.'});
   const tenant=tenantRuntime?.context.getCurrent()?.tenant;
-  if(tenant?.maxStudents){
-    const countQuery=await pool.query("SELECT count(*)::int AS count FROM users WHERE role='student' AND active=TRUE");
-    assertStudentQuota({currentCount:countQuery.rows[0]?.count,additionalCount:validRows.length,maxStudents:tenant.maxStudents});
-  }
   const seenEmails = new Set();
   const preparedRows = [];
   for (const row of rows) {
@@ -895,6 +893,7 @@ app.post('/api/students/import',allow('admin'),asyncRoute(async(req,res)=>{
   const client = await pool.connect(), added = [];
   try {
     await client.query('BEGIN');
+    if(tenant)await assertStudentQuotaInTransaction(client,{additionalCount:validRows.length,maxStudents:tenant.maxStudents});
     for (const row of preparedRows) {
       const username = await uniqueUsername(client);
       const q = tenantRuntime
@@ -951,10 +950,6 @@ app.post('/api/teachers',allow('admin'),asyncRoute(async(req,res)=>{
   if(password.length<8||password.length>128)return res.status(400).json({error:'Password harus berisi 8–128 karakter.'});
   if(role==='teacher'&&(!classNames.length||!subjectIds.length||subjectIds.some(id=>!Number.isSafeInteger(id)||id<1)))return res.status(400).json({error:'Guru harus memiliki sedikitnya satu kelas dan satu mata pelajaran.'});
   const tenant=tenantRuntime?.context.getCurrent()?.tenant;
-  if(tenant?.maxTeachers){
-    const countQuery=await pool.query("SELECT count(*)::int AS count FROM users WHERE role IN ('teacher','pengawas') AND active=TRUE");
-    assertTeacherQuota({currentCount:countQuery.rows[0]?.count,additionalCount:1,maxTeachers:tenant.maxTeachers});
-  }
   const [settings,subjects,existing,existingEmail]=await Promise.all([
     pool.query('SELECT classes FROM school_settings WHERE id=1'),
     pool.query('SELECT id FROM subjects WHERE id=ANY($1::bigint[])',[subjectIds]),
@@ -968,6 +963,7 @@ app.post('/api/teachers',allow('admin'),asyncRoute(async(req,res)=>{
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
+    if(tenant)await assertTeacherQuotaInTransaction(client,{maxTeachers:tenant.maxTeachers});
     const passwordHash=await bcrypt.hash(password,12);
     const teacher=tenantRuntime
       ? await client.query('INSERT INTO users(username,email,full_name,role,password_hash,active) VALUES($1,$2,$3,$4,$5,TRUE) RETURNING id,username,email,full_name AS name,role',[username,email,name,role,passwordHash])
@@ -985,13 +981,10 @@ app.post('/api/teachers/import',allow('admin'),asyncRoute(async(req,res)=>{
   const validRows=rows.filter(r=>String(r.name||'').trim()&&String(r.username||'').trim()&&String(r.password||'').trim()&&String(r.className||'').trim()&&String(r.subjectName||'').trim());
   if(!validRows.length)return res.status(400).json({error:'Tidak ada baris guru yang valid untuk diimpor.'});
   const tenant=tenantRuntime?.context.getCurrent()?.tenant;
-  if(tenant?.maxTeachers){
-    const countQuery=await pool.query("SELECT count(*)::int AS count FROM users WHERE role IN ('teacher','pengawas') AND active=TRUE");
-    assertTeacherQuota({currentCount:countQuery.rows[0]?.count,additionalCount:validRows.length,maxTeachers:tenant.maxTeachers});
-  }
   const client=await pool.connect(),added=[],seenUsernames=new Set(),seenEmails=new Set();
   try{
     await client.query('BEGIN');
+    if(tenant)await assertTeacherQuotaInTransaction(client,{additionalCount:validRows.length,maxTeachers:tenant.maxTeachers});
     const [settings,subjects]=await Promise.all([
       pool.query('SELECT classes FROM school_settings WHERE id=1'),
       pool.query('SELECT id,name FROM subjects')

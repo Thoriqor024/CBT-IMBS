@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertStudentQuota, assertTeacherQuota } from './tenantQuota.js';
+import {
+  assertStudentQuota,
+  assertStudentQuotaInTransaction,
+  assertTeacherQuota,
+  assertTeacherQuotaInTransaction,
+} from './tenantQuota.js';
 
 test('assertStudentQuota permits additions within student quota limit', () => {
   assert.doesNotThrow(() => assertStudentQuota({ currentCount: 10, additionalCount: 1, maxStudents: 50 }));
@@ -36,5 +41,34 @@ test('quota assertion ignores invalid or unconfigured limits gracefully', () => 
   assert.doesNotThrow(() => assertStudentQuota({ currentCount: 100, maxStudents: null }));
   assert.doesNotThrow(() => assertStudentQuota({ currentCount: 100, maxStudents: 0 }));
   assert.doesNotThrow(() => assertTeacherQuota({ currentCount: 100, maxTeachers: undefined }));
+});
+
+test('student quota check locks the school row before counting active students', async () => {
+  const queries = [];
+  const client = { query: async query => {
+    queries.push(query);
+    return query.includes('count(*)') ? { rows: [{ count: 9 }] } : { rows: [] };
+  } };
+
+  await assertStudentQuotaInTransaction(client, { maxStudents: 10 });
+
+  assert.match(queries[0], /FOR UPDATE/);
+  assert.match(queries[1], /role='student'/);
+});
+
+test('teacher quota check rejects an over-limit import after acquiring the school row lock', async () => {
+  const queries = [];
+  const client = { query: async query => {
+    queries.push(query);
+    return query.includes('count(*)') ? { rows: [{ count: 9 }] } : { rows: [] };
+  } };
+
+  await assert.rejects(
+    assertTeacherQuotaInTransaction(client, { additionalCount: 2, maxTeachers: 10 }),
+    error => error.code === 'TENANT_TEACHER_QUOTA_EXCEEDED'
+  );
+
+  assert.match(queries[0], /FOR UPDATE/);
+  assert.match(queries[1], /role IN \('teacher','pengawas'\)/);
 });
 
