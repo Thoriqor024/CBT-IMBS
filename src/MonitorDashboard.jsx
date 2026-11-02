@@ -38,14 +38,14 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
     return () => { clearInterval(timer); clearInterval(clock); };
   }, [refresh, refreshKey]);
 
-  const active = useMemo(() => sessions.filter(student => student.status === 'in_progress'), [sessions]);
-  const violations = useMemo(() => sessions.filter(student =>
-    student.status === 'locked' || Number(student.violationCount) > 0 ||
-    (student.events || []).some(event => event.code !== 'admin_reset' && ['pending', 'confirmed'].includes(event.reviewStatus))
-  ), [sessions]);
+  const isViolation = student => student.status === 'locked' || Number(student.violationCount) > 0 ||
+    (student.events || []).some(event => event.code !== 'admin_reset' && ['pending', 'confirmed'].includes(event.reviewStatus));
+  const violations = useMemo(() => sessions.filter(isViolation), [sessions]);
+  const completed = useMemo(() => sessions.filter(student => student.status === 'completed' && !isViolation(student)), [sessions]);
+  const active = useMemo(() => sessions.filter(student => student.status === 'in_progress' && !isViolation(student)), [sessions]);
 
   const toggle = id => setExpanded(current => ({ ...current, [id]: !current[id] }));
-  const showAll = () => setExpanded(Object.fromEntries([...active, ...violations].map(s => [s.id, true])));
+  const showAll = () => setExpanded(Object.fromEntries([...active, ...violations, ...completed].map(s => [s.id, true])));
 
   return <>
     <div className="page-title-row">
@@ -59,6 +59,9 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
       </MonitorPanel>
       <MonitorPanel title="Sedang mengikuti ujian" count={active.length} note="Log tersedia pada setiap peserta." empty="Tidak ada siswa yang sedang mengerjakan ujian." loading={loading}>
         <MonitorTable students={active} expanded={expanded} toggle={toggle} now={now} busy={busy} onReviewEvent={onReviewEvent} onReviewSession={onReviewSession} onViolation={onViolation} onReset={onReset} canRecordViolation={canRecordViolation} />
+      </MonitorPanel>
+      <MonitorPanel title="Selesai ujian" count={completed.length} note="Riwayat peserta yang telah mengumpulkan ujian." empty="Belum ada siswa yang menyelesaikan ujian." loading={loading}>
+        <MonitorTable students={completed} expanded={expanded} toggle={toggle} now={now} busy={busy} onReviewEvent={onReviewEvent} onReviewSession={onReviewSession} onViolation={onViolation} onReset={onReset} canRecordViolation={canRecordViolation} />
       </MonitorPanel>
     </div>
   </>;

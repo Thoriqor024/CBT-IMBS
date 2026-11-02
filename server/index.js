@@ -1670,7 +1670,7 @@ app.get('/api/monitor',allow('admin','teacher','pengawas'),asyncRoute(async(req,
       COALESCE(jsonb_agg(jsonb_build_object('id',ve.id,'code',ve.code,'detail',ve.detail,'createdAt',ve.created_at,'reviewStatus',ve.review_status,'reviewReason',ve.review_reason,'reviewedAt',ve.reviewed_at) ORDER BY ve.created_at) FILTER(WHERE ve.id IS NOT NULL),'[]'::jsonb) AS events
     FROM exams e JOIN question_banks b ON b.id=e.bank_id JOIN exam_sessions es ON es.exam_id=e.id JOIN users u ON u.id=es.student_id
     LEFT JOIN violation_events ve ON ve.session_id=es.id
-    WHERE (es.status IN ('in_progress','locked') OR es.violation_count>0 OR EXISTS(
+    WHERE (es.status IN ('in_progress','completed','locked') OR es.violation_count>0 OR EXISTS(
       SELECT 1 FROM violation_events pending WHERE pending.session_id=es.id AND pending.review_status IN ('pending','confirmed') AND pending.code<>'admin_reset'
     )) AND ($1 IN ('admin','pengawas') OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*')))))
     GROUP BY e.id,es.id,u.id ORDER BY e.created_at DESC,u.full_name`,[req.session.user.role,req.session.user.id]);
