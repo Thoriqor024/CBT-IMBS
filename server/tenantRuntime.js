@@ -125,6 +125,7 @@ export function createTenantRuntime({ env = process.env, PoolClass = Pool, resol
     secretStore,
     router,
     context,
+    evictTenantPool: tenantId => router.evict(tenantId),
     async initializeControlPlane() {
       const sql = await readFile(new URL('./migrations/control-plane/001_tenant_registry.sql', import.meta.url), 'utf8');
       await controlPool.query(sql);

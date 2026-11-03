@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api.js";
-import { ShieldCheck, Settings, LogOut, ChevronRight, RefreshCw, Users, KeyRound, Check, Plus, CircleCheck, CircleAlert, LockKeyhole, Layers3, Copy, Download, X, Menu } from "lucide-react";
+import {
+  ShieldCheck, Settings, LogOut, ChevronRight, RefreshCw, Users, KeyRound, Check,
+  Plus, CircleCheck, CircleAlert, LockKeyhole, Layers3, Copy, Download, X, Menu,
+  Database, RotateCcw, Zap, CheckCircle2, AlertTriangle, FileCheck, Server, Upload
+} from "lucide-react";
 
 function PlatformMetric({ label, value, detail, icon: Icon, tone }) {
   return <article className={"platform-metric platform-metric-" + tone}>
@@ -10,8 +14,10 @@ function PlatformMetric({ label, value, detail, icon: Icon, tone }) {
 }
 
 export default function PlatformOwnerConsole({ user, onLogout }) {
+  const [activeTab, setActiveTab] = useState('overview');
   const [overview, setOverview] = useState(null);
   const [tenants, setTenants] = useState([]);
+  const [selectedTenantId, setSelectedTenantId] = useState('');
   const [form, setForm] = useState({
     schoolCode: '',
     displayName: '',
@@ -26,7 +32,17 @@ export default function PlatformOwnerConsole({ user, onLogout }) {
   const [actionBusyId, setActionBusyId] = useState(null);
   const [credentialsModal, setCredentialsModal] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [copiedHash, setCopiedHash] = useState(null);
   const [mobile, setMobile] = useState(false);
+
+  // Backup & Restore states
+  const [backups, setBackups] = useState([]);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupActionBusy, setBackupActionBusy] = useState(false);
+  const [stagingResult, setStagingResult] = useState(null);
+  const [stagingModalOpen, setStagingModalOpen] = useState(false);
+  const [confirmMaintenance, setConfirmMaintenance] = useState(false);
+  const [latestCutover, setLatestCutover] = useState(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -51,6 +67,201 @@ export default function PlatformOwnerConsole({ user, onLogout }) {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const selectedTenant = tenants.find(t => t.id === selectedTenantId) || tenants[0] || null;
+
+  useEffect(() => {
+    if (!selectedTenantId && tenants.length > 0) {
+      setSelectedTenantId(tenants[0].id);
+    }
+  }, [tenants, selectedTenantId]);
+
+  const loadBackups = useCallback(async (tenantId) => {
+    if (!tenantId) return;
+    setBackupLoading(true);
+    try {
+      const res = await api(`/platform/tenants/${tenantId}/backups`);
+      setBackups(res?.backups || []);
+    } catch {
+      setBackups([]);
+    } finally {
+      setBackupLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'backup-restore' && selectedTenant?.id) {
+      loadBackups(selectedTenant.id);
+    }
+  }, [activeTab, selectedTenant?.id, loadBackups]);
+
+  const handleCreateBackup = async () => {
+    if (!selectedTenant) return;
+    setBackupActionBusy(true);
+    setMessage(null);
+    try {
+      const res = await api(`/platform/tenants/${selectedTenant.id}/backups`, {
+        method: 'POST',
+      });
+      setMessage({
+        type: 'success',
+        text: `Backup berhasil dibuat untuk "${selectedTenant.displayName}" (${(res.sizeBytes / 1024).toFixed(1)} KB, SHA-256: ${res.manifest?.databaseHash?.slice(0, 12)}…). Paket terenkripsi tersimpan.`,
+      });
+      await loadBackups(selectedTenant.id);
+    } catch (err) {
+      setMessage({ type: 'error', text: `Gagal membuat backup: ${err.message}` });
+    } finally {
+      setBackupActionBusy(false);
+    }
+  };
+
+  const handleDownloadBackup = (backup) => {
+    const url = `/api/platform/backups/${backup.filename}/download?token=${backup.downloadToken}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = backup.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handleRestoreToStaging = async (filename) => {
+    if (!selectedTenant) return;
+    setBackupActionBusy(true);
+    setMessage(null);
+    try {
+      const res = await api(`/platform/tenants/${selectedTenant.id}/restore/staging`, {
+        method: 'POST',
+        body: JSON.stringify({ filename }),
+      });
+      setStagingResult(res);
+      setStagingModalOpen(true);
+      setConfirmMaintenance(false);
+    } catch (err) {
+      setMessage({ type: 'error', text: `Gagal memulihkan ke database staging: ${err.message}` });
+    } finally {
+      setBackupActionBusy(false);
+    }
+  };
+
+  const handleCutover = async () => {
+    if (!selectedTenant || !stagingResult) return;
+    setBackupActionBusy(true);
+    try {
+      const res = await api(`/platform/tenants/${selectedTenant.id}/restore/cutover`, {
+        method: 'POST',
+        body: JSON.stringify({
+          stagingDatabaseName: stagingResult.stagingDatabaseName,
+          confirmMaintenance,
+        }),
+      });
+      setLatestCutover(res);
+      setStagingModalOpen(false);
+      setStagingResult(null);
+      setMessage({
+        type: 'success',
+        text: `Cutover berhasil! Tenant aktif dialihkan ke "${res.activeDatabase}". Database lama "${res.preservedDatabase}" dipertahankan untuk opsi rollback.`,
+      });
+      await loadData();
+      await loadBackups(selectedTenant.id);
+    } catch (err) {
+      alert(`Cutover gagal: ${err.message}`);
+    } finally {
+      setBackupActionBusy(false);
+    }
+  };
+
+  const handleAutoRestore = async (filename) => {
+    if (!selectedTenant) return;
+    const ok = window.confirm(
+      `Jalankan 1-Klik Pulihkan & Cutover Otomatis untuk "${selectedTenant.displayName}"?\n\nSistem akan otomatis: restore ke staging, memvalidasi 5 poin (skema, relasi, data, ujian, media), dan melakukan cutover bila seluruh pengujian lulus. Jika gagal, tenant tetap aman pada database lama.`
+    );
+    if (!ok) return;
+
+    setBackupActionBusy(true);
+    setMessage(null);
+    try {
+      const res = await api(`/platform/tenants/${selectedTenant.id}/restore/auto`, {
+        method: 'POST',
+        body: JSON.stringify({ filename, confirmMaintenance: true }),
+      });
+      if (res.aborted) {
+        setMessage({
+          type: 'error',
+          text: `Proses otomatis dihentikan: ${res.message}. Tenant tetap aman pada database "${res.activeDatabase}".`,
+        });
+        setStagingResult({ stagingDatabaseName: res.stagingDatabaseName, verification: res.verification });
+        setStagingModalOpen(true);
+      } else {
+        setLatestCutover(res);
+        setMessage({
+          type: 'success',
+          text: `1-Klik Cutover Otomatis berhasil! Tenant aktif dialihkan ke "${res.activeDatabase}". Database lama "${res.preservedDatabase}" dipertahankan.`,
+        });
+        await loadData();
+        await loadBackups(selectedTenant.id);
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: `Auto restore gagal: ${err.message}` });
+    } finally {
+      setBackupActionBusy(false);
+    }
+  };
+
+  const handleRollback = async (targetDb) => {
+    if (!selectedTenant || !targetDb) return;
+    const ok = window.confirm(`Kembalikan (rollback) rute database tenant "${selectedTenant.displayName}" ke database lama "${targetDb}"?`);
+    if (!ok) return;
+    setBackupActionBusy(true);
+    try {
+      const res = await api(`/platform/tenants/${selectedTenant.id}/restore/rollback`, {
+        method: 'POST',
+        body: JSON.stringify({ targetDatabaseName: targetDb }),
+      });
+      setMessage({ type: 'success', text: `Rollback berhasil: Tenant dialihkan kembali ke "${res.activeDatabase}".` });
+      setLatestCutover(null);
+      await loadData();
+      await loadBackups(selectedTenant.id);
+    } catch (err) {
+      alert(`Rollback gagal: ${err.message}`);
+    } finally {
+      setBackupActionBusy(false);
+    }
+  };
+
+  const handleUploadFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedTenant) return;
+    setBackupActionBusy(true);
+    setMessage(null);
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const res = await fetch(`/api/platform/tenants/${selectedTenant.id}/backups/upload`, {
+        method: 'POST',
+        body: fd,
+        credentials: 'same-origin',
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || 'Unggah backup gagal.');
+      }
+      setMessage({ type: 'success', text: `Berkas backup "${file.name}" berhasil diunggah.` });
+      await loadBackups(selectedTenant.id);
+    } catch (err) {
+      setMessage({ type: 'error', text: `Unggah backup gagal: ${err.message}` });
+    } finally {
+      setBackupActionBusy(false);
+      e.target.value = '';
+    }
+  };
+
+  const copyHash = (hash) => {
+    navigator.clipboard.writeText(hash).then(() => {
+      setCopiedHash(hash);
+      setTimeout(() => setCopiedHash(null), 2000);
+    });
+  };
 
   const submitOnboarding = async (event) => {
     event.preventDefault();
@@ -205,8 +416,23 @@ export default function PlatformOwnerConsole({ user, onLogout }) {
         </div>
         <div className="nav-caption">OPERASI</div>
         <nav>
-          <button className="nav-item selected" type="button" onClick={() => setMobile(false)}><Settings size={18} /><span>Overview</span></button>
-          <button className="nav-item" type="button" onClick={() => { setMobile(false); onLogout(); }}><LogOut size={18} /><span>Keluar</span></button>
+          <button
+            className={`nav-item ${activeTab === 'overview' ? 'selected' : ''}`}
+            type="button"
+            onClick={() => { setActiveTab('overview'); setMobile(false); }}
+          >
+            <Settings size={18} /><span>Overview</span>
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'backup-restore' ? 'selected' : ''}`}
+            type="button"
+            onClick={() => { setActiveTab('backup-restore'); setMobile(false); }}
+          >
+            <Database size={18} /><span>Backup & Restore</span>
+          </button>
+          <button className="nav-item" type="button" onClick={() => { setMobile(false); onLogout(); }}>
+            <LogOut size={18} /><span>Keluar</span>
+          </button>
         </nav>
         <div className="sidebar-bottom">
           <div className="profile">
@@ -223,10 +449,10 @@ export default function PlatformOwnerConsole({ user, onLogout }) {
         <header className="topbar platform-topbar">
           <div className="top-left">
             <button className="mobile-menu" type="button" aria-label="Buka menu" onClick={() => setMobile(true)}><Menu size={17}/></button>
-            <div className="crumb">Platform <ChevronRight size={14}/> <strong>Multi-Tenant Control</strong></div>
+            <div className="crumb">Platform <ChevronRight size={14}/> <strong>{activeTab === 'overview' ? 'Multi-Tenant Control' : 'Backup & Disaster Recovery'}</strong></div>
           </div>
           <div className="top-actions">
-            <button className="secondary text-button" onClick={loadData} title="Perbarui Data">
+            <button className="secondary text-button" onClick={() => { loadData(); if (selectedTenant?.id) loadBackups(selectedTenant.id); }} title="Perbarui Data">
               <RefreshCw size={15}/> Segarkan
             </button>
             <div className="session-pill">
@@ -235,186 +461,487 @@ export default function PlatformOwnerConsole({ user, onLogout }) {
           </div>
         </header>
         <div className="content platform-content">
-          <section className="platform-page-heading">
-            <div>
-              <span className="platform-eyebrow">PLATFORM OPERATIONS</span>
-              <h1>Multi-Tenant Control</h1>
-              <p>Pantau kesiapan layanan dan kelola provisioning sekolah.</p>
+          {message && (
+            <div className={`platform-message platform-message-${message.type}`} role={message.type === 'error' ? 'alert' : 'status'} style={{ marginBottom: 16 }}>
+              {message.type === 'success' ? <CircleCheck size={16} /> : <CircleAlert size={16} />} {message.text}
             </div>
-            <div className={`platform-readiness ${overview?.provisioningReady ? 'is-ready' : 'is-locked'}`}>
-              <span className="platform-readiness-dot" />
-              {overview?.provisioningReady ? 'Provisioner aktif' : 'Provisioner dikunci'}
-            </div>
-          </section>
-          <section className="platform-metrics" aria-label="Status platform">
-            <PlatformMetric label="Sekolah terdaftar" value={totalTenants} detail={activeTenants + ' aktif · ' + trialTenants + ' trial'} icon={Users} tone="blue" />
-            <PlatformMetric label="Control-plane" value={overview?.controlPlaneReady ? 'Siap' : 'Belum siap'} detail="cbt_control_plane terhubung" icon={KeyRound} tone="violet" />
-            <PlatformMetric label="Provisioning engine" value={overview?.provisioningReady ? 'Siap' : 'Terkunci'} detail={overview?.provisioningReady ? 'Dedicated DB & role generator' : 'Belum terhubung'} icon={ShieldCheck} tone="amber" />
-            <PlatformMetric label="Isolasi cbt_imbs" value="100% Aman" detail="Database legacy IMBS tidak tersentuh" icon={Check} tone="green" />
-          </section>
+          )}
 
-          <div className="platform-overview-grid">
-            <section className="panel platform-panel platform-onboarding-panel">
-              <div className="platform-section-head">
+          {activeTab === 'overview' ? (
+            <>
+              <section className="platform-page-heading">
                 <div>
-                  <span className="platform-section-kicker">ONBOARDING</span>
-                  <h2>Provisioning sekolah baru</h2>
-                  <p>Membuat database PostgreSQL dedicated, role migration & aplikasi, serta akun admin sekolah.</p>
+                  <span className="platform-eyebrow">PLATFORM OPERATIONS</span>
+                  <h1>Multi-Tenant Control</h1>
+                  <p>Pantau kesiapan layanan dan kelola provisioning sekolah.</p>
                 </div>
+                <div className={`platform-readiness ${overview?.provisioningReady ? 'is-ready' : 'is-locked'}`}>
+                  <span className="platform-readiness-dot" />
+                  {overview?.provisioningReady ? 'Provisioner aktif' : 'Provisioner dikunci'}
+                </div>
+              </section>
+              <section className="platform-metrics" aria-label="Status platform">
+                <PlatformMetric label="Sekolah terdaftar" value={totalTenants} detail={activeTenants + ' aktif · ' + trialTenants + ' trial'} icon={Users} tone="blue" />
+                <PlatformMetric label="Control-plane" value={overview?.controlPlaneReady ? 'Siap' : 'Belum siap'} detail="cbt_control_plane terhubung" icon={KeyRound} tone="violet" />
+                <PlatformMetric label="Provisioning engine" value={overview?.provisioningReady ? 'Siap' : 'Terkunci'} detail={overview?.provisioningReady ? 'Dedicated DB & role generator' : 'Belum terhubung'} icon={ShieldCheck} tone="amber" />
+                <PlatformMetric label="Isolasi cbt_imbs" value="100% Aman" detail="Database legacy IMBS tidak tersentuh" icon={Check} tone="green" />
+              </section>
+
+              <div className="platform-overview-grid">
+                <section className="panel platform-panel platform-onboarding-panel">
+                  <div className="platform-section-head">
+                    <div>
+                      <span className="platform-section-kicker">ONBOARDING</span>
+                      <h2>Provisioning sekolah baru</h2>
+                      <p>Membuat database PostgreSQL dedicated, role migration & aplikasi, serta akun admin sekolah.</p>
+                    </div>
+                  </div>
+                  <form onSubmit={submitOnboarding} className="platform-onboarding-form">
+                    <label className="platform-field">
+                      Kode sekolah (slug)
+                      <input
+                        value={form.schoolCode}
+                        onChange={(event) => setForm({ ...form, schoolCode: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
+                        placeholder="misal: sekolah-demo-a"
+                        required
+                        disabled={!overview?.provisioningReady || busy}
+                      />
+                      <small className="platform-field-help">Hanya huruf kecil, angka, dan tanda hubung.</small>
+                    </label>
+                    <label className="platform-field">
+                      Nama sekolah
+                      <input
+                        value={form.displayName}
+                        onChange={(event) => setForm({ ...form, displayName: event.target.value })}
+                        placeholder="misal: SMA Negeri 1 Demo"
+                        required
+                        disabled={!overview?.provisioningReady || busy}
+                      />
+                    </label>
+                    <label className="platform-field">
+                      Nama admin sekolah
+                      <input
+                        value={form.adminName}
+                        onChange={(event) => setForm({ ...form, adminName: event.target.value })}
+                        placeholder="misal: Budi Santoso, S.Kom"
+                        required
+                        disabled={!overview?.provisioningReady || busy}
+                      />
+                    </label>
+                    <label className="platform-field">
+                      Email admin sekolah
+                      <input
+                        type="email"
+                        value={form.adminEmail}
+                        onChange={(event) => setForm({ ...form, adminEmail: event.target.value })}
+                        placeholder="misal: admin@sekolah-demo.id"
+                        required
+                        disabled={!overview?.provisioningReady || busy}
+                      />
+                    </label>
+                    <label className="platform-field platform-field-trial">
+                      Durasi masa uji coba (Hari)
+                      <input
+                        type="number"
+                        min="1"
+                        max="365"
+                        value={form.trialDays}
+                        onChange={(event) => setForm({ ...form, trialDays: event.target.value })}
+                        required
+                        disabled={!overview?.provisioningReady || busy}
+                      />
+                    </label>
+                    <div className="platform-quota-fields">
+                      <label className="platform-field">
+                        Batas siswa
+                        <input
+                          type="number"
+                          min="10"
+                          max="10000"
+                          value={form.maxStudents}
+                          onChange={(event) => setForm({ ...form, maxStudents: event.target.value })}
+                          required
+                          disabled={!overview?.provisioningReady || busy}
+                        />
+                      </label>
+                      <label className="platform-field">
+                        Batas guru
+                        <input
+                          type="number"
+                          min="1"
+                          max="1000"
+                          value={form.maxTeachers}
+                          onChange={(event) => setForm({ ...form, maxTeachers: event.target.value })}
+                          required
+                          disabled={!overview?.provisioningReady || busy}
+                        />
+                      </label>
+                    </div>
+                    <div className="platform-form-submit">
+                      <button className="primary" type="submit" disabled={busy || !overview?.provisioningReady}>
+                        <Plus size={16} /> {busy ? 'Memproses provisioning database & schema…' : 'Provisioning Sekolah Baru'}
+                      </button>
+                    </div>
+                  </form>
+                </section>
+
+                <section className="panel platform-panel platform-architecture-panel">
+                  <div className="platform-section-head">
+                    <div>
+                      <span className="platform-section-kicker">KEAMANAN & ISOLASI</span>
+                      <h2>Arsitektur multi-tenant</h2>
+                      <p>Status isolasi dan kendali database control-plane.</p>
+                    </div>
+                  </div>
+                  <div className="platform-architecture-list">
+                    <div className="platform-architecture-item"><span><b>Mode sistem</b><small>{overview?.mode || 'local-safe-pilot'}</small></span><ShieldCheck size={17}/></div>
+                    <div className="platform-architecture-item"><span><b>Control-plane registry</b><small>cbt_control_plane.tenants</small></span><KeyRound size={17}/></div>
+                    <div className="platform-architecture-item"><span><b>Kriptografi rahasia database</b><small>AES-256-GCM via master key</small></span><LockKeyhole size={17}/></div>
+                    <div className="platform-architecture-item"><span><b>Isolasi data database</b><small>Dedicated DB (cbt_t_*) per sekolah</small></span><Layers3 size={17}/></div>
+                    <div className="platform-architecture-item"><span><b>Perlindungan cbt_imbs</b><small>Read/write legacy IMBS terpisah</small></span><Check size={17}/></div>
+                  </div>
+                </section>
               </div>
-              <form onSubmit={submitOnboarding} className="platform-onboarding-form">
-                <label className="platform-field">
-                  Kode sekolah (slug)
-                  <input
-                    value={form.schoolCode}
-                    onChange={(event) => setForm({ ...form, schoolCode: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
-                    placeholder="misal: sekolah-demo-a"
-                    required
-                    disabled={!overview?.provisioningReady || busy}
-                  />
-                  <small className="platform-field-help">Hanya huruf kecil, angka, dan tanda hubung.</small>
-                </label>
-                <label className="platform-field">
-                  Nama sekolah
-                  <input
-                    value={form.displayName}
-                    onChange={(event) => setForm({ ...form, displayName: event.target.value })}
-                    placeholder="misal: SMA Negeri 1 Demo"
-                    required
-                    disabled={!overview?.provisioningReady || busy}
-                  />
-                </label>
-                <label className="platform-field">
-                  Nama admin sekolah
-                  <input
-                    value={form.adminName}
-                    onChange={(event) => setForm({ ...form, adminName: event.target.value })}
-                    placeholder="misal: Budi Santoso, S.Kom"
-                    required
-                    disabled={!overview?.provisioningReady || busy}
-                  />
-                </label>
-                <label className="platform-field">
-                  Email admin sekolah
-                  <input
-                    type="email"
-                    value={form.adminEmail}
-                    onChange={(event) => setForm({ ...form, adminEmail: event.target.value })}
-                    placeholder="misal: admin@sekolah-demo.id"
-                    required
-                    disabled={!overview?.provisioningReady || busy}
-                  />
-                </label>
-                <label className="platform-field platform-field-trial">
-                  Durasi masa uji coba (Hari)
-                  <input
-                    type="number"
-                    min="1"
-                    max="365"
-                    value={form.trialDays}
-                    onChange={(event) => setForm({ ...form, trialDays: event.target.value })}
-                    required
-                    disabled={!overview?.provisioningReady || busy}
-                  />
-                </label>
-                <div className="platform-quota-fields">
-                  <label className="platform-field">
-                    Batas siswa
-                    <input
-                      type="number"
-                      min="10"
-                      max="10000"
-                      value={form.maxStudents}
-                      onChange={(event) => setForm({ ...form, maxStudents: event.target.value })}
-                      required
-                      disabled={!overview?.provisioningReady || busy}
-                    />
-                  </label>
-                  <label className="platform-field">
-                    Batas guru
-                    <input
-                      type="number"
-                      min="1"
-                      max="1000"
-                      value={form.maxTeachers}
-                      onChange={(event) => setForm({ ...form, maxTeachers: event.target.value })}
-                      required
-                      disabled={!overview?.provisioningReady || busy}
-                    />
-                  </label>
-                </div>
-                <div className="platform-form-submit">
-                  <button className="primary" type="submit" disabled={busy || !overview?.provisioningReady}>
-                    <Plus size={16} /> {busy ? 'Memproses provisioning database & schema…' : 'Provisioning Sekolah Baru'}
+
+              <section className="panel platform-panel platform-tenants-panel">
+                <div className="platform-section-head platform-tenants-heading">
+                  <div>
+                    <span className="platform-section-kicker">REGISTRY</span>
+                    <h2>Daftar tenant / sekolah terdaftar</h2>
+                    <p>Seluruh sekolah terisolasi yang telah diprovisioning pada control-plane.</p>
+                  </div>
+                  <button className="secondary platform-refresh-button" onClick={loadData}>
+                    <RefreshCw size={14}/> Segarkan
                   </button>
                 </div>
-                {message && (
-                  <div className={`platform-message platform-message-${message.type}`} role={message.type === 'error' ? 'alert' : 'status'}>
-                    {message.type === 'success' ? <CircleCheck size={16} /> : <CircleAlert size={16} />} {message.text}
-                  </div>
-                )}
-              </form>
-            </section>
-
-            <section className="panel platform-panel platform-architecture-panel">
-              <div className="platform-section-head">
+                <div className="platform-table-scroll">
+                  {tenants.length === 0 ? (
+                    <div className="platform-empty-state">
+                      Belum ada tenant sekolah terdaftar. Gunakan formulir di atas untuk melakukan provisioning sekolah pertama.
+                    </div>
+                  ) : (
+                    <table className="platform-tenant-table">
+                      <thead><tr><th>Kode</th><th>Nama sekolah</th><th>Database</th><th>Kuota</th><th>Masa aktif</th><th>Status</th><th>Tindakan</th></tr></thead>
+                      <tbody>{tenants.map((t) => (
+                        <tr key={t.id}>
+                          <td className="mono platform-tenant-code">{t.schoolCode}</td>
+                          <td className="platform-tenant-name" title={t.displayName}>{t.displayName}</td>
+                          <td className="mono platform-tenant-database" title={t.databaseName}>{t.databaseName}</td>
+                          <td className="platform-tenant-quota">{t.maxStudents} siswa <span>/</span> {t.maxTeachers} guru</td>
+                          <td className="platform-tenant-expiry">{t.trialEndsAt ? new Date(t.trialEndsAt).toLocaleDateString('id-ID') : '-'}</td>
+                          <td><span className={`platform-status platform-status-${t.status}`}>{t.status}</span></td>
+                          <td><div className="platform-tenant-actions">
+                            <button className="secondary" onClick={() => openEditModal(t)}>Ubah Paket</button>
+                            <button className="secondary" disabled={actionBusyId === t.id} onClick={() => handleStatusToggle(t)}>
+                              {actionBusyId === t.id ? '…' : t.status === 'suspended' ? 'Aktifkan' : 'Tangguhkan'}
+                            </button>
+                          </div></td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  )}
+                </div>
+              </section>
+            </>
+          ) : (
+            <>
+              <section className="platform-page-heading">
                 <div>
-                  <span className="platform-section-kicker">KEAMANAN & ISOLASI</span>
-                  <h2>Arsitektur multi-tenant</h2>
-                  <p>Status isolasi dan kendali database control-plane.</p>
+                  <span className="platform-eyebrow">DISASTER RECOVERY & ISOLASI TENANT</span>
+                  <h1>Backup, Download & Restore Tenant</h1>
+                  <p>Pencadangan terenkripsi AES-256, verifikasi otomatis 5-lapis staging, dan cutover aman tanpa downtime.</p>
                 </div>
-              </div>
-              <div className="platform-architecture-list">
-                <div className="platform-architecture-item"><span><b>Mode sistem</b><small>{overview?.mode || 'local-safe-pilot'}</small></span><ShieldCheck size={17}/></div>
-                <div className="platform-architecture-item"><span><b>Control-plane registry</b><small>cbt_control_plane.tenants</small></span><KeyRound size={17}/></div>
-                <div className="platform-architecture-item"><span><b>Kriptografi rahasia database</b><small>AES-256-GCM via master key</small></span><LockKeyhole size={17}/></div>
-                <div className="platform-architecture-item"><span><b>Isolasi data database</b><small>Dedicated DB (cbt_t_*) per sekolah</small></span><Layers3 size={17}/></div>
-                <div className="platform-architecture-item"><span><b>Perlindungan cbt_imbs</b><small>Read/write legacy IMBS terpisah</small></span><Check size={17}/></div>
-              </div>
-            </section>
-          </div>
+                <div className="platform-readiness is-ready">
+                  <span className="platform-readiness-dot" />
+                  Engine DR Siap
+                </div>
+              </section>
 
-          <section className="panel platform-panel platform-tenants-panel">
-            <div className="platform-section-head platform-tenants-heading">
-              <div>
-                <span className="platform-section-kicker">REGISTRY</span>
-                <h2>Daftar tenant / sekolah terdaftar</h2>
-                <p>Seluruh sekolah terisolasi yang telah diprovisioning pada control-plane.</p>
-              </div>
-              <button className="secondary platform-refresh-button" onClick={loadData}>
-                <RefreshCw size={14}/> Segarkan
-              </button>
-            </div>
-            <div className="platform-table-scroll">
-              {tenants.length === 0 ? (
-                <div className="platform-empty-state">
-                  Belum ada tenant sekolah terdaftar. Gunakan formulir di atas untuk melakukan provisioning sekolah pertama.
+              <div className="platform-backup-controls">
+                <div className="platform-tenant-picker">
+                  <span>Pilih Sekolah / Tenant:</span>
+                  <select
+                    value={selectedTenantId}
+                    onChange={(e) => setSelectedTenantId(e.target.value)}
+                    disabled={backupActionBusy || backupLoading}
+                  >
+                    {tenants.map(t => (
+                      <option key={t.id} value={t.id}>
+                        {t.displayName} ({t.schoolCode}) — {t.databaseName}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              ) : (
-                <table className="platform-tenant-table">
-                  <thead><tr><th>Kode</th><th>Nama sekolah</th><th>Database</th><th>Kuota</th><th>Masa aktif</th><th>Status</th><th>Tindakan</th></tr></thead>
-                  <tbody>{tenants.map((t) => (
-                    <tr key={t.id}>
-                      <td className="mono platform-tenant-code">{t.schoolCode}</td>
-                      <td className="platform-tenant-name" title={t.displayName}>{t.displayName}</td>
-                      <td className="mono platform-tenant-database" title={t.databaseName}>{t.databaseName}</td>
-                      <td className="platform-tenant-quota">{t.maxStudents} siswa <span>/</span> {t.maxTeachers} guru</td>
-                      <td className="platform-tenant-expiry">{t.trialEndsAt ? new Date(t.trialEndsAt).toLocaleDateString('id-ID') : '-'}</td>
-                      <td><span className={`platform-status platform-status-${t.status}`}>{t.status}</span></td>
-                      <td><div className="platform-tenant-actions">
-                        <button className="secondary" onClick={() => openEditModal(t)}>Ubah Paket</button>
-                        <button className="secondary" disabled={actionBusyId === t.id} onClick={() => handleStatusToggle(t)}>
-                          {actionBusyId === t.id ? '…' : t.status === 'suspended' ? 'Aktifkan' : 'Tangguhkan'}
-                        </button>
-                      </div></td>
-                    </tr>
-                  ))}</tbody>
-                </table>
+                <div className="platform-backup-toolbar">
+                  <button
+                    className="primary"
+                    onClick={handleCreateBackup}
+                    disabled={!selectedTenant || backupActionBusy}
+                  >
+                    <Plus size={15}/> {backupActionBusy ? 'Memproses backup…' : 'Buat Backup Baru'}
+                  </button>
+                  <label className="platform-upload-btn" title="Unggah berkas .cbtenc untuk dipulihkan">
+                    <Upload size={14}/> Unggah Berkas .cbtenc
+                    <input
+                      type="file"
+                      accept=".cbtenc"
+                      disabled={!selectedTenant || backupActionBusy}
+                      onChange={handleUploadFile}
+                    />
+                  </label>
+                  <button
+                    className="secondary text-button"
+                    onClick={() => selectedTenant && loadBackups(selectedTenant.id)}
+                    disabled={backupLoading}
+                  >
+                    <RefreshCw size={14}/> {backupLoading ? 'Memuat…' : 'Segarkan'}
+                  </button>
+                </div>
+              </div>
+
+              {selectedTenant && (
+                <div className="platform-backup-summary-card">
+                  <div className="platform-backup-summary-item">
+                    <small>Nama Sekolah</small>
+                    <strong>{selectedTenant.displayName}</strong>
+                    <span>Kode: <span className="mono">{selectedTenant.schoolCode}</span></span>
+                  </div>
+                  <div className="platform-backup-summary-item">
+                    <small>Database Aktif Saat Ini</small>
+                    <strong className="mono">{selectedTenant.databaseName}</strong>
+                    <span>Status: <span className={`platform-status platform-status-${selectedTenant.status}`}>{selectedTenant.status}</span></span>
+                  </div>
+                  <div className="platform-backup-summary-item">
+                    <small>Kriptografi Paket</small>
+                    <strong>AES-256-GCM Terisolasi</strong>
+                    <span>Master key terlindungi server</span>
+                  </div>
+                  <div className="platform-backup-summary-item">
+                    <small>Total Snapshot Tersedia</small>
+                    <strong>{backups.length} Berkas</strong>
+                    <span>Penyimpanan: ./backups</span>
+                  </div>
+                </div>
               )}
-            </div>
-          </section>
+
+              {latestCutover?.preservedDatabase && (
+                <div className="platform-rollback-banner">
+                  <div>
+                    <strong>Rollback Tersedia:</strong> Database lama <span className="mono">{latestCutover.preservedDatabase}</span> masih dipertahankan sementara.
+                  </div>
+                  <button
+                    className="secondary"
+                    onClick={() => handleRollback(latestCutover.preservedDatabase)}
+                    disabled={backupActionBusy}
+                  >
+                    <RotateCcw size={14}/> Kembalikan ke Database Lama (Rollback)
+                  </button>
+                </div>
+              )}
+
+              <section className="panel platform-panel">
+                <div className="platform-section-head">
+                  <div>
+                    <span className="platform-section-kicker">DAFTAR SNAPSHOT TERENKRIPSI</span>
+                    <h2>Daftar Paket Backup Tenant</h2>
+                    <p>Paket terenkripsi AES-256 mencakup seluruh data tabel, berkas media fisik yang dirujuk, serta manifest kriptografis.</p>
+                  </div>
+                </div>
+                <div className="platform-table-scroll">
+                  {backupLoading ? (
+                    <div className="platform-empty-state">Memuat daftar backup tenant…</div>
+                  ) : backups.length === 0 ? (
+                    <div className="platform-empty-state">
+                      Belum ada paket backup untuk sekolah ini. Klik "Buat Backup Baru" untuk membuat cadangan terenkripsi pertama.
+                    </div>
+                  ) : (
+                    <table className="platform-tenant-table">
+                      <thead>
+                        <tr>
+                          <th>Berkas & Tanggal</th>
+                          <th>Ukuran & Baris</th>
+                          <th>Media</th>
+                          <th>Hash SHA-256 (Dump)</th>
+                          <th>Verifikasi</th>
+                          <th>Tindakan Pemulihan</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {backups.map((b) => (
+                          <tr key={b.filename}>
+                            <td>
+                              <b className="mono" style={{ fontSize: 12 }}>{b.filename}</b>
+                              <div style={{ color: '#68807d', fontSize: 11 }}>
+                                {b.createdAt ? new Date(b.createdAt).toLocaleString('id-ID') : '-'}
+                              </div>
+                            </td>
+                            <td>
+                              <strong>{(b.sizeBytes / 1024).toFixed(1)} KB</strong>
+                              <div style={{ color: '#68807d', fontSize: 11 }}>
+                                {b.manifest?.verification?.checks?.totalRows || Object.values(b.manifest?.tablesSummary || {}).reduce((x, y) => x + y, 0)} baris data
+                              </div>
+                            </td>
+                            <td>
+                              <span>{b.manifest?.mediaCount || 0} berkas</span>
+                            </td>
+                            <td>
+                              <span className="platform-hash-badge">
+                                {b.manifest?.databaseHash?.slice(0, 14)}…
+                                <button type="button" title="Salin Full Hash SHA-256" onClick={() => copyHash(b.manifest?.databaseHash)}>
+                                  {copiedHash === b.manifest?.databaseHash ? <Check size={12}/> : <Copy size={12}/>}
+                                </button>
+                              </span>
+                            </td>
+                            <td>
+                              <span className="platform-status platform-status-active">
+                                {b.manifest?.verification?.verified ? 'Terverifikasi' : 'Siap'}
+                              </span>
+                            </td>
+                            <td>
+                              <div className="platform-tenant-actions">
+                                <button
+                                  className="secondary"
+                                  onClick={() => handleDownloadBackup(b)}
+                                  title="Unduh paket terenkripsi (tautan terbatas waktu)"
+                                >
+                                  <Download size={13}/> Unduh
+                                </button>
+                                <button
+                                  className="secondary"
+                                  disabled={backupActionBusy}
+                                  onClick={() => handleRestoreToStaging(b.filename)}
+                                  title="Pulihkan ke staging dan jalankan 5 poin pengujian"
+                                >
+                                  <Server size={13}/> Uji Staging
+                                </button>
+                                <button
+                                  className="primary platform-btn-zap"
+                                  disabled={backupActionBusy}
+                                  onClick={() => handleAutoRestore(b.filename)}
+                                  title="Satu klik otomatis: staging, validasi 5 poin, lalu cutover bila lulus"
+                                >
+                                  <Zap size={13}/> 1-Klik Auto
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </section>
+            </>
+          )}
         </div>
       </main>
+
+      {/* Modal Verifikasi Staging & Konfirmasi Cutover */}
+      {stagingModalOpen && stagingResult && (
+        <div className="modal-backdrop" onClick={() => setStagingModalOpen(false)}>
+          <div className="modal platform-modal platform-edit-modal" style={{ maxWidth: 640 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <h2>Hasil Pengujian Database Staging</h2>
+                <p>Target staging: <span className="mono">{stagingResult.stagingDatabaseName}</span></p>
+              </div>
+              <button className="icon-btn" onClick={() => setStagingModalOpen(false)}><X size={18}/></button>
+            </div>
+            <div className="platform-modal-body">
+              {stagingResult.verification?.passed ? (
+                <div className="platform-message platform-message-success" style={{ margin: 0 }}>
+                  <CircleCheck size={16}/> Seluruh 5 poin pengujian staging lulus. Aman untuk melakukan cutover koneksi aplikasi.
+                </div>
+              ) : (
+                <div className="platform-message platform-message-error" style={{ margin: 0 }}>
+                  <CircleAlert size={16}/> Terdapat pemeriksaan yang belum memenuhi syarat. Cutover dicegah sampai semua poin valid.
+                </div>
+              )}
+
+              <div className="platform-verification-checklist">
+                <div className={`platform-verification-item ${stagingResult.verification?.schema?.passed ? 'is-passed' : 'is-failed'}`}>
+                  <span className="platform-verification-icon">
+                    {stagingResult.verification?.schema?.passed ? <CheckCircle2 size={16} color="#166534" /> : <AlertTriangle size={16} color="#991b1b" />}
+                  </span>
+                  <div className="platform-verification-body">
+                    <strong>1. Skema Database & Kolom Inti</strong>
+                    <span>{stagingResult.verification?.schema?.detail}</span>
+                  </div>
+                </div>
+
+                <div className={`platform-verification-item ${stagingResult.verification?.relations?.passed ? 'is-passed' : 'is-failed'}`}>
+                  <span className="platform-verification-icon">
+                    {stagingResult.verification?.relations?.passed ? <CheckCircle2 size={16} color="#166534" /> : <AlertTriangle size={16} color="#991b1b" />}
+                  </span>
+                  <div className="platform-verification-body">
+                    <strong>2. Integritas Relasi (Foreign Key)</strong>
+                    <span>{stagingResult.verification?.relations?.detail}</span>
+                  </div>
+                </div>
+
+                <div className={`platform-verification-item ${stagingResult.verification?.dataCounts?.passed ? 'is-passed' : 'is-failed'}`}>
+                  <span className="platform-verification-icon">
+                    {stagingResult.verification?.dataCounts?.passed ? <CheckCircle2 size={16} color="#166534" /> : <AlertTriangle size={16} color="#991b1b" />}
+                  </span>
+                  <div className="platform-verification-body">
+                    <strong>3. Kecocokan Jumlah Baris Data</strong>
+                    <span>{stagingResult.verification?.dataCounts?.detail}</span>
+                  </div>
+                </div>
+
+                <div className={`platform-verification-item ${stagingResult.verification?.loginAndExams?.passed ? 'is-passed' : 'is-failed'}`}>
+                  <span className="platform-verification-icon">
+                    {stagingResult.verification?.loginAndExams?.passed ? <CheckCircle2 size={16} color="#166534" /> : <AlertTriangle size={16} color="#991b1b" />}
+                  </span>
+                  <div className="platform-verification-body">
+                    <strong>4. Kesiapan Login Admin & Sesi Ujian Aktif</strong>
+                    <span>{stagingResult.verification?.loginAndExams?.detail}</span>
+                  </div>
+                </div>
+
+                <div className={`platform-verification-item ${stagingResult.verification?.media?.passed ? 'is-passed' : 'is-failed'}`}>
+                  <span className="platform-verification-icon">
+                    {stagingResult.verification?.media?.passed ? <CheckCircle2 size={16} color="#166534" /> : <AlertTriangle size={16} color="#991b1b" />}
+                  </span>
+                  <div className="platform-verification-body">
+                    <strong>5. Integritas Berkas Media Fisik</strong>
+                    <span>{stagingResult.verification?.media?.detail}</span>
+                  </div>
+                </div>
+              </div>
+
+              {stagingResult.verification?.passed && (
+                <div style={{ marginTop: 12, padding: 12, background: '#f8faf9', border: '1px solid #dbe6e2', borderRadius: 6 }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: 12, color: '#1d3934' }}>
+                    <input
+                      type="checkbox"
+                      checked={confirmMaintenance}
+                      onChange={(e) => setConfirmMaintenance(e.target.checked)}
+                      style={{ marginTop: 3 }}
+                    />
+                    <span>
+                      <strong>Konfirmasi Cutover Maintenance:</strong> Saya memahami bahwa koneksi aktif tenant akan dikuras (drained) dan diarahkan ke database staging. Database lama (<span className="mono">{selectedTenant?.databaseName}</span>) dipertahankan agar opsi rollback tetap tersedia.
+                    </span>
+                  </label>
+                </div>
+              )}
+            </div>
+            <div className="modal-foot platform-modal-actions">
+              <button type="button" className="secondary" onClick={() => setStagingModalOpen(false)}>
+                Tutup
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={!stagingResult.verification?.passed || !confirmMaintenance || backupActionBusy}
+                onClick={handleCutover}
+              >
+                {backupActionBusy ? 'Menguras koneksi & cutover…' : 'Lakukan Cutover ke Tenant Aktif'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {credentialsModal && (
         <div className="modal-backdrop" onClick={() => setCredentialsModal(null)}>

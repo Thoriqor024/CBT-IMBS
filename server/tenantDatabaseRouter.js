@@ -132,6 +132,15 @@ export class TenantDatabaseRouter {
     });
   }
 
+  async evict(tenantId) {
+    const pool = this.#pools.get(tenantId);
+    if (pool) {
+      this.#pools.delete(tenantId);
+      await pool.end().catch(() => {});
+    }
+    this.#pendingPools.delete(tenantId);
+  }
+
   async close() {
     const pools = [...this.#pools.values()];
     this.#pools.clear();

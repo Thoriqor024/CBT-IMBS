@@ -34,6 +34,7 @@ import { buildSeedAccounts, isLegacyBootstrapSeedEnabled } from './seedAccounts.
 import { assertStudentQuotaInTransaction, assertTeacherQuotaInTransaction } from './tenantQuota.js';
 import { validateSubjectInput } from './subjectValidation.js';
 import { calculateItemDifficulty } from './itemAnalysis.js';
+import { createTenantBackupService } from './tenantBackupService.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -150,6 +151,46 @@ if (controlPlaneRuntime?.secretStore) {
 const platformManagement = createPlatformManagement({
   controlPool,
   createTenantProvisioner: tenantProvisioner,
+});
+let tenantMasterKey = null;
+if (process.env.TENANT_MASTER_KEY_FILE) {
+  try {
+    tenantMasterKey = await readFile(process.env.TENANT_MASTER_KEY_FILE);
+  } catch {
+    if (process.env.TENANT_MASTER_KEY_FILE.startsWith('/run/secrets/')) {
+      tenantMasterKey = await readFile(path.resolve('./secrets', path.basename(process.env.TENANT_MASTER_KEY_FILE))).catch(() => null);
+    }
+  }
+}
+const tenantBackupService = createTenantBackupService({
+  controlPool,
+  adminPool: pool,
+  secretStore: controlPlaneRuntime?.secretStore || null,
+  router: tenantRuntime?.router || null,
+  mediaDirectory,
+  backupsDirectory: path.resolve('./backups'),
+  masterKey: tenantMasterKey,
+  createTenantPool: async ({ database, user, password }) => new Pool(getPoolConfig({
+    ...process.env,
+    DB_HOST: process.env.DB_HOST || 'localhost',
+    DB_PORT: Number(process.env.DB_PORT || 5432),
+    DB_NAME: database,
+    DB_USER: user,
+    DB_PASSWORD: password,
+    DB_POOL_MAX: '5',
+  })),
+  initializeTenantDatabase: (targetPool) => initializeDatabase(targetPool),
+  applyEmailMigration: async (targetPool) => {
+    const sql = await readFile(new URL('./migrations/tenant/002_user_email.sql', import.meta.url), 'utf8');
+    await targetPool.query(sql);
+  },
+});
+const backupUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, path.resolve('./backups')),
+    filename: (_req, file, cb) => cb(null, `backup_uploaded_${randomUUID().slice(0, 8)}_${path.basename(file.originalname)}`),
+  }),
+  limits: { fileSize: 250 * 1024 * 1024 },
 });
 const platformAuthenticator = controlPlaneRuntime ? createPlatformAuthenticator({ controlPool }) : null;
 const revokeUserSessions = (client,userId,tenantId,exceptSid=null) => tenantRuntime&&tenantId
@@ -669,6 +710,78 @@ app.patch('/api/platform/tenants/:id',platformOwnerOnly,asyncRoute(async(req,res
     actorId: req.session.user.id,
   });
   res.json({ tenant: updated });
+}));
+app.get('/api/platform/tenants/:id/backups', platformOwnerOnly, asyncRoute(async (req, res) => {
+  const backups = await tenantBackupService.listBackups({ tenantId: req.params.id });
+  res.json({ backups });
+}));
+app.post('/api/platform/tenants/:id/backups', platformOwnerOnly, asyncRoute(async (req, res) => {
+  const result = await tenantBackupService.createBackup({
+    tenantId: req.params.id,
+    actorId: req.session.user.id,
+  });
+  res.status(201).json(result);
+}));
+app.post('/api/platform/tenants/:id/backups/upload', platformOwnerOnly, backupUpload.single('file'), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Berkas backup .cbtenc wajib diunggah.' });
+  res.json({ filename: req.file.filename, message: 'Berkas backup berhasil diunggah.' });
+}));
+app.get('/api/platform/backups/:filename/download', asyncRoute(async (req, res) => {
+  const { token } = req.query || {};
+  const tokenData = tenantBackupService.verifyDownloadToken(token, req.params.filename);
+  const buffer = await tenantBackupService.getBackupFileBuffer(req.params.filename, token);
+  res.setHeader('Content-Type', 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${path.basename(req.params.filename)}"`);
+  if (tokenData?.tenantId) {
+    await controlPool.query(
+      `INSERT INTO control_plane.platform_audit_logs (actor_id, tenant_id, action, detail)
+       VALUES ($1, $2, 'tenant.backup.download', $3::jsonb)`,
+      [req.session?.user?.id || null, tokenData.tenantId, JSON.stringify({ filename: req.params.filename })],
+    ).catch(() => {});
+  }
+  res.send(buffer);
+}));
+app.post('/api/platform/tenants/:id/restore/staging', platformOwnerOnly, asyncRoute(async (req, res) => {
+  const { filename } = req.body || {};
+  if (!filename) return res.status(400).json({ error: 'Nama berkas backup wajib dipilih.' });
+  const result = await tenantBackupService.restoreToStaging({
+    tenantId: req.params.id,
+    filename,
+    actorId: req.session.user.id,
+  });
+  res.json(result);
+}));
+app.post('/api/platform/tenants/:id/restore/cutover', platformOwnerOnly, asyncRoute(async (req, res) => {
+  const { stagingDatabaseName, confirmMaintenance } = req.body || {};
+  if (!stagingDatabaseName) return res.status(400).json({ error: 'Nama database staging wajib diisi.' });
+  const result = await tenantBackupService.cutoverTenant({
+    tenantId: req.params.id,
+    stagingDatabaseName,
+    actorId: req.session.user.id,
+    confirmMaintenance: Boolean(confirmMaintenance),
+  });
+  res.json(result);
+}));
+app.post('/api/platform/tenants/:id/restore/auto', platformOwnerOnly, asyncRoute(async (req, res) => {
+  const { filename, confirmMaintenance } = req.body || {};
+  if (!filename) return res.status(400).json({ error: 'Nama berkas backup wajib dipilih.' });
+  const result = await tenantBackupService.executeAutoRestore({
+    tenantId: req.params.id,
+    filename,
+    actorId: req.session.user.id,
+    confirmMaintenance: confirmMaintenance !== false,
+  });
+  res.json(result);
+}));
+app.post('/api/platform/tenants/:id/restore/rollback', platformOwnerOnly, asyncRoute(async (req, res) => {
+  const { targetDatabaseName } = req.body || {};
+  if (!targetDatabaseName) return res.status(400).json({ error: 'Target nama database rollback wajib diisi.' });
+  const result = await tenantBackupService.rollbackTenant({
+    tenantId: req.params.id,
+    targetDatabaseName,
+    actorId: req.session.user.id,
+  });
+  res.json(result);
 }));
 app.get('/api/auth/me',(req,res)=>res.json({user:req.session.user||null}));
 app.post('/api/auth/login',asyncRoute(async(req,res)=>{

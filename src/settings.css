@@ -166,6 +166,31 @@
 .platform-owner-console .platform-modal-form .login-error{margin:0}
 .platform-owner-console>.scrim{padding:0;border:0}
 .platform-owner-console button:focus-visible,.platform-owner-console input:focus-visible,.platform-owner-console select:focus-visible{outline:2px solid #287f66;outline-offset:2px}
+
+/* Platform Backup & Restore Styles */
+.platform-owner-console .platform-backup-controls{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px;padding:14px 16px;border:1px solid var(--platform-line);border-radius:8px;background:var(--platform-surface)}
+.platform-owner-console .platform-tenant-picker{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:700;color:#20383d}
+.platform-owner-console .platform-tenant-picker select{min-width:240px;padding:6px 10px;border:1px solid #c7d5d2;border-radius:6px;font-size:12px;background:#fff}
+.platform-owner-console .platform-backup-summary-card{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px;padding:14px 16px;border:1px solid #d8e5e1;border-radius:8px;background:#f9fbfb}
+.platform-owner-console .platform-backup-summary-item{display:flex;flex-direction:column;gap:3px}
+.platform-owner-console .platform-backup-summary-item small{color:#728688;font-size:10px;font-weight:700;text-transform:uppercase}
+.platform-owner-console .platform-backup-summary-item strong{color:#1b3439;font-size:14px;font-weight:700}
+.platform-owner-console .platform-backup-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:14px}
+.platform-owner-console .platform-upload-btn{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid #c7d5d2;border-radius:6px;background:#fff;color:#2d4e46;font-size:11px;font-weight:700;cursor:pointer}
+.platform-owner-console .platform-upload-btn input{position:absolute;top:0;left:0;opacity:0;width:100%;height:100%;cursor:pointer}
+.platform-owner-console .platform-hash-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border-radius:4px;background:#edf3f1;color:#274d44;font-family:monospace;font-size:10px}
+.platform-owner-console .platform-hash-badge button{padding:0;border:0;background:none;color:#4f7067;cursor:pointer}
+.platform-owner-console .platform-verification-checklist{display:grid;gap:10px;margin:12px 0}
+.platform-owner-console .platform-verification-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid #e1ebe7;border-radius:6px;background:#fff}
+.platform-owner-console .platform-verification-item.is-passed{border-color:#cce4d8;background:#f5faf7}
+.platform-owner-console .platform-verification-item.is-failed{border-color:#f2d4ce;background:#fdf6f5}
+.platform-owner-console .platform-verification-icon{flex:0 0 auto;margin-top:2px}
+.platform-owner-console .platform-verification-body{display:flex;flex-direction:column;gap:2px}
+.platform-owner-console .platform-verification-body strong{font-size:12px;color:#1d3934}
+.platform-owner-console .platform-verification-body span{font-size:11px;color:#5a726d}
+.platform-owner-console .platform-rollback-banner{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 14px;margin-bottom:14px;border:1px solid #bce1d4;border-radius:6px;background:#eef8f4;color:#185b46;font-size:12px}
+.platform-owner-console .platform-btn-zap{background:#166534!important;border-color:#14532d!important;color:#fff!important}
+.platform-owner-console .platform-btn-zap:hover{background:#15803d!important}
 @media(max-width:1080px){.platform-owner-console .platform-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.platform-owner-console .platform-overview-grid{grid-template-columns:1fr}}
 @media(max-width:700px){
 	.platform-owner-console .platform-content{padding:22px 14px 32px}
