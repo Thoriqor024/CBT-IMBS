@@ -16,9 +16,11 @@ function validateSecretInput(secretRef, databaseUser, password) {
 }
 
 function normalizeKey(masterKey) {
-  const key = Buffer.isBuffer(masterKey) ? Buffer.from(masterKey) : Buffer.from(String(masterKey || ''), 'base64');
-  if (key.length !== 32) throw new TypeError('Tenant secret master key must be exactly 32 bytes.');
-  return key;
+  const buf = Buffer.isBuffer(masterKey) ? masterKey : Buffer.from(String(masterKey || ''), 'base64');
+  if (buf.length === 32) return buf;
+  const fromB64 = Buffer.from(buf.toString('utf8').trim(), 'base64');
+  if (fromB64.length === 32) return fromB64;
+  throw new TypeError('Tenant secret master key must be exactly 32 bytes.');
 }
 
 export function createTenantSecretStore({ pool, masterKey }) {
