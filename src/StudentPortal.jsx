@@ -496,10 +496,10 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
       <div className="map-legend"><span><i className="map-current"/>{isArabic?'السؤال الحالي':'Nomor aktif'}</span><span><i className="map-done"/>{isArabic?'تمت الإجابة':'Sudah dijawab'}</span></div>
       <div className="exam-sidebar-nav">
         <button type="button" className="sidebar-nav-btn prev" disabled={index===0||violationReviewRequired} onClick={()=>setIndex(x=>Math.max(0,x-1))} title={isArabic?'السؤال السابق':'Soal Sebelumnya'}>
-          {isArabic?<><ChevronLeftIcon size={14}/>السابق</>:<><ChevronsRightIcon size={14}/>Sebelumnya</>}
+          {isArabic?<><ChevronLeftIcon size={14}/>السابق</>:<><ChevronLeftIcon size={14}/>Sebelumnya</>}
         </button>
         <button type="button" className="sidebar-nav-btn next" disabled={index>=questions.length-1||violationReviewRequired} onClick={()=>setIndex(x=>Math.min(questions.length-1,x+1))} title={isArabic?'السؤال التالي':'Soal Berikutnya'}>
-          {isArabic?<>التالي<ChevronLeft size={14}/></>:<>Berikutnya<ChevronRight size={14}/></>}
+          {isArabic?<>التالي<ChevronRightIcon size={14}/></>:<>Berikutnya<ChevronRightIcon size={14}/></>}
         </button>
       </div>
       <div className="exam-student-info">
