@@ -787,11 +787,11 @@ app.get('/api/auth/me',(req,res)=>res.json({user:req.session.user||null}));
 app.post('/api/auth/login',asyncRoute(async(req,res)=>{
   const {username,password}=req.body||{};
   const tenantContext=tenantRuntime?.context.getCurrent();
-  const identity=tenantRuntime?String(req.body?.email||req.body?.username||'').trim().toLowerCase():String(username||'').trim();
+  const identity=tenantRuntime?String(req.body?.email||req.body?.username||'').trim().toLowerCase():String(username||req.body?.email||'').trim();
   if(!identity||!password)return res.status(400).json({error:tenantRuntime?'Kode sekolah, email atau username, dan password wajib diisi.':'Username dan kata sandi wajib diisi.'});
   const result=tenantRuntime
     ? await pool.query('SELECT * FROM users WHERE (lower(email)=lower($1) OR lower(username)=lower($1)) AND active=TRUE',[identity])
-    : await pool.query('SELECT * FROM users WHERE username=$1 AND active=TRUE',[identity]);
+    : await pool.query('SELECT * FROM users WHERE (username=$1 OR (email IS NOT NULL AND lower(email)=lower($1))) AND active=TRUE',[identity]);
   const u=result.rows[0];
   if(controlPlaneRuntime&&u?.role==='platform_owner')
     return res.status(401).json({error:'Gunakan halaman login pemilik platform.'});

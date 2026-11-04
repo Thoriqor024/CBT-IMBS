@@ -116,7 +116,7 @@ export default function App(){
   const downloadCredentials=()=>{const headers=tenantLoginEnabled?'nama,email,username,password awal,kelas\n':'nama,username,token,kelas\n';const content=headers+credentials.map(x=>(tenantLoginEnabled?[x.name,x.email,x.username,x.token,x.className]:[x.name,x.username,x.token,x.className]).map(v=>`"${String(v||'').replaceAll('"','""')}"`).join(',')).join('\n')+'\n';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type:'text/csv;charset=utf-8'}));a.download='kredensial-siswa-imbs.csv';a.click();URL.revokeObjectURL(a.href);};
   if(booting)return <div className="loading-screen"><div className="brand-mark"><GraduationCap/></div><span>Memuat ruang kerja IMBS...</span></div>;
   if(!user && shouldUsePlatformLogin) return <PlatformOwnerLogin onLogin={login} busy={busy} error={error}/>;
-  if(!user) return <><Login onLogin={login} busy={busy} error={error} tenancyEnabled={tenantLoginEnabled}/><a href="/platform" className="text-button" style={{position:'fixed',left:'50%',bottom:16,transform:'translateX(-50%)',zIndex:20}}>Masuk sebagai pemilik platform</a></>;
+  if(!user) return <><Login onLogin={login} busy={busy} error={error} tenancyEnabled={tenantLoginEnabled}/>{tenantLoginEnabled&&<a href="/platform" className="text-button" style={{position:'fixed',left:'50%',bottom:16,transform:'translateX(-50%)',zIndex:20}}>Masuk sebagai pemilik platform</a>}</>;
   if(user.role==='platform_owner')return <PlatformOwnerConsole user={user} onLogout={logout}/>;
   if(user.role==='student')return <StudentPortal user={user} onLogout={logout}/>;
   return (

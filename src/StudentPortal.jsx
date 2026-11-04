@@ -3,6 +3,7 @@ import { AlertTriangle, BookOpen, Check, CheckCircle2, ChevronLeft, ChevronRight
 import { api } from './api';
 import { deleteSessionDrafts, getDrafts, markDraftSynced, saveDraft, verifyEncryptedStorage } from './examStorage';
 import { FormulaText } from './FormulaText.jsx';
+import { ARABIC_HARAKAT, ARABIC_KEYBOARD_ROWS, resolveArabicKeyPress, isRtlContext } from './arabicKeyboardData.js';
 
 export default function StudentPortal({user,onLogout}) {
   const [exams,setExams]=useState([]);
@@ -120,7 +121,7 @@ export default function StudentPortal({user,onLogout}) {
         <button className="exam-preflight-close" onClick={()=>setSelectedExam(null)} aria-label="Tutup">Ã—</button>
         <div className="preflight-icon"><ShieldCheck size={21}/></div><h2 id="preflight-title">Persiapan ujian</h2>
         <p>{selectedExam.title} Â· {selectedExam.durationMinutes} menit</p>
-        {selectedExam.sessionStatus==='not_started'&&<label className="preflight-pin">PIN dari pengawas<input autoFocus inputMode="numeric" maxLength={6} value={entryPin} onChange={e=>setEntryPin(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="â€¢â€¢â€¢â€¢â€¢â€¢"/></label>}
+        {selectedExam.sessionStatus==='not_started'&&<label className="preflight-pin">PIN dari pengawas<input autoFocus inputMode="numeric" maxLength={6} value={entryPin} onChange={e=>setEntryPin(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="MASUKAN PIN"/></label>}
         <div className={`preflight-screen ${screenState==='multiple'?'is-blocked':screenState==='unverified'||screenState==='fullscreen'?'is-unknown':''}`}>
           {screenState==='multiple'?<MonitorX size={18}/>:screenState==='checking'?<RefreshCw size={18}/>:<MonitorCheck size={18}/>}
           <span>{screenMessage||'Saat mulai, browser akan meminta izin memeriksa layar dan menampilkan ujian dalam layar penuh.'}</span>
@@ -174,6 +175,9 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
       .filter(Boolean);
   }, [question?.stimulus?.id, questions]);
   const answeredCount=questions.filter(q=>String(answers[q.id]||'').trim()).length;
+  const isArabic=session.languageCode==='ar'||session.textDirection==='rtl';
+  const currentAnswer=String(answers[question?.id]||'');
+  const isRtlAnswer=isArabic||/[\u0600-\u06FF]/.test(currentAnswer);
   const isFinished=session.status==='completed'||session.status==='locked';
   const violationReviewRequired=Boolean(session.violationReviewRequired);
   const updateSession=next=>{
@@ -432,6 +436,11 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
   const insertArabic=character=>{
     const element=textareaRef.current;
     if(!element||question?.type!=='essay')return;
+    if(element.getAttribute('dir')!=='rtl'){
+      element.setAttribute('dir','rtl');
+      element.style.direction='rtl';
+      element.style.textAlign='right';
+    }
     const start=element.selectionStart,end=element.selectionEnd,current=String(answers[question.id]||'');
     const next=current.slice(0,start)+character+current.slice(end);saveAnswer(question.id,next);
     requestAnimationFrame(()=>{element.focus();element.setSelectionRange(start+character.length,start+character.length);});
@@ -439,6 +448,11 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
   const insertCombiningMark=mark=>{
     const element=textareaRef.current;
     if(!element||question?.type!=='essay')return;
+    if(element.getAttribute('dir')!=='rtl'){
+      element.setAttribute('dir','rtl');
+      element.style.direction='rtl';
+      element.style.textAlign='right';
+    }
     const start=element.selectionStart,end=element.selectionEnd,current=String(answers[question.id]||'');
     let insertion=start;
     while(insertion<end&&/[\u064B-\u065F\u0670]/.test(current[insertion]))insertion++;
@@ -477,28 +491,36 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
         <div className="autosave-state"><Save size={13}/>{saveState}</div><div className={`exam-timer ${seconds<300?'timer-warning':''}`}><Clock3 size={15}/>{formatTime(seconds)}</div>
       </div>
     </header>
-    <div className="exam-body"><aside className="exam-sidebar"><div className="exam-side-title"><b>Nomor soal</b><span>{answeredCount}/{questions.length} terjawab</span></div>
+    <div className="exam-body"><aside className="exam-sidebar"><div className="exam-side-title"><b>{isArabic?'أرقام الأسئلة':'Nomor soal'}</b><span>{isArabic?`${answeredCount}/${questions.length} مجاب`:`${answeredCount}/${questions.length} terjawab`}</span></div>
       <div className="question-map">{questions.map((item,i)=><button key={item.id} disabled={violationReviewRequired} className={`${index===i?'current':''} ${String(answers[item.id]||'').trim()?'answered':''}`} onClick={()=>setIndex(i)}>{i+1}</button>)}</div>
-      <div className="map-legend"><span><i className="map-current"/>Nomor aktif</span><span><i className="map-done"/>Sudah dijawab</span></div>
+      <div className="map-legend"><span><i className="map-current"/>{isArabic?'السؤال الحالي':'Nomor aktif'}</span><span><i className="map-done"/>{isArabic?'تمت الإجابة':'Sudah dijawab'}</span></div>
+      <div className="exam-sidebar-nav">
+        <button type="button" className="sidebar-nav-btn prev" disabled={index===0||violationReviewRequired} onClick={()=>setIndex(x=>Math.max(0,x-1))} title={isArabic?'السؤال السابق':'Soal Sebelumnya'}>
+          {isArabic?<><ChevronRight size={14}/>السابق</>:<><ChevronLeft size={14}/>Sebelumnya</>}
+        </button>
+        <button type="button" className="sidebar-nav-btn next" disabled={index>=questions.length-1||violationReviewRequired} onClick={()=>setIndex(x=>Math.min(questions.length-1,x+1))} title={isArabic?'السؤال التالي':'Soal Berikutnya'}>
+          {isArabic?<>التالي<ChevronLeft size={14}/></>:<>Berikutnya<ChevronRight size={14}/></>}
+        </button>
+      </div>
       <div className="exam-student-info">
-        <small>IDENTITAS PESERTA</small>
+        <small>{isArabic?'بيانات الطالب':'IDENTITAS PESERTA'}</small>
         <b>{user.name}</b>
         <b>{user.username}</b>
         <div className="exam-student-class-badge">
-          <span>Kelas / Tingkat</span>
-          <b>{user.className || session.studentClass || 'Siswa'}{session.grade ? ` · Kelas ${session.grade}` : ''}</b>
+          <span>{isArabic?'الفصل / المرحلة':'Kelas / Tingkat'}</span>
+          <b>{user.className || session.studentClass || (isArabic?'طالب':'Siswa')}{session.grade ? ` · ${isArabic ? 'الصف ' + session.grade : 'Kelas ' + session.grade}` : ''}</b>
         </div>
       </div>
-      <button className="exam-submit" disabled={!draftReady||busy||Boolean(storageError)||violationReviewRequired} onClick={()=>submitExam(false)}><Check size={15}/>{busy?'Menyinkronkan…':'Kumpulkan ujian'}</button>
+      <button className="exam-submit" disabled={!draftReady||busy||Boolean(storageError)||violationReviewRequired} onClick={()=>submitExam(false)}><Check size={15}/>{busy?(isArabic?'جاري المزامنة…':'Menyinkronkan…'):(isArabic?'تسليم الاختبار':'Kumpulkan ujian')}</button>
     </aside>
-    <main className="exam-question-area"><div className="exam-breadcrumb"><span>{session.subject||'Ujian'}</span><ChevronRight size={13}/><b>Soal {index+1} dari {questions.length}</b><span className="autosave-state">{online?'Jawaban disinkronkan otomatis':'Jawaban tersimpan lokal'}</span></div>
+    <main className="exam-question-area"><div className="exam-breadcrumb"><span>{session.subject||(isArabic?'اختبار':'Ujian')}</span><ChevronRight size={13}/><b>{isArabic?`السؤال ${index+1} من ${questions.length}`:`Soal ${index+1} dari ${questions.length}`}</b><span className="autosave-state">{online?(isArabic?'المزامنة التلقائية مفعلة':'Jawaban disinkronkan otomatis'):(isArabic?'محفوظ محلياً':'Jawaban tersimpan lokal')}</span></div>
       {(error||storageError)&&<div className="exam-warning danger"><AlertTriangle size={15}/>{storageError||error}</div>}
       {!online&&<div className="exam-warning">
         <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',width:'100%',justifyContent:'space-between'}}>
-          <span style={{display:'inline-flex',alignItems:'center',gap:6}}><WifiOff size={15}/>Koneksi terputus. Jawaban tetap aman tersimpan terenkripsi di IndexedDB perangkat.</span>
+          <span style={{display:'inline-flex',alignItems:'center',gap:6}}><WifiOff size={15}/>{isArabic?'انقطع الاتصال. الإجابات محفوظة بشكل آمن ومشفر على الجهاز.':'Koneksi terputus. Jawaban tetap aman tersimpan terenkripsi di IndexedDB perangkat.'}</span>
           <button type="button" className="retry-probe-button" disabled={isProbing} onClick={probeAndReconnect} style={{display:'inline-flex',alignItems:'center',gap:5,padding:'5px 12px',fontSize:'12px',fontWeight:600,borderRadius:6,border:'1px solid #c97a18',background:'#fff',color:'#a5590c',cursor:'pointer'}}>
             <RefreshCw size={13} className={isProbing?'spin':''} style={{animation:isProbing?'spin 1s linear infinite':'none'}}/>
-            <span>{isProbing?'Menghubungkan…':'Hubungkan Ulang Sekarang'}</span>
+            <span>{isProbing?(isArabic?'جاري الاتصال…':'Menghubungkan…'):(isArabic?'إعادة الاتصال الآن':'Hubungkan Ulang Sekarang')}</span>
           </button>
         </div>
         {probeFeedback&&<div style={{marginTop:6,fontSize:'12px',fontWeight:600,color:'#258a63'}}>{probeFeedback}</div>}
@@ -508,18 +530,18 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
       {screenBlocked&&<div className="exam-security-overlay" role="alertdialog" aria-modal="true"><MonitorX size={42}/><h2>Terdeteksi layar kedua</h2><p>Cabut monitor atau proyektor kedua untuk membuka kembali ujian. Jawaban yang sudah tersimpan tetap aman.</p></div>}
       {fullscreenLost&&!screenBlocked&&<div className="exam-security-overlay fullscreen-shield" role="alertdialog" aria-modal="true"><ShieldCheck size={42}/><h2>Mode layar penuh berakhir</h2><p>Interaksi soal dijeda. Kembali ke mode layar penuh untuk melanjutkan.</p><button onClick={requestFullscreen}>العودة إلى ملء الشاشة</button></div>}
       {showSubmitModal&&<div className="exam-preflight-backdrop" role="presentation">
-        <section className="exam-preflight" role="dialog" aria-modal="true" aria-labelledby="submit-modal-title">
+        <section className="exam-preflight" role="dialog" aria-modal="true" aria-labelledby="submit-modal-title" dir={isArabic?'rtl':'ltr'}>
           <button className="exam-preflight-close" onClick={()=>setShowSubmitModal(false)} aria-label="Tutup">×</button>
           <div className="preflight-icon"><CheckCircle2 size={24}/></div>
-          <h2 id="submit-modal-title">Kumpulkan Ujian?</h2>
-          <p>Anda sudah menjawab <b>{answeredCount}</b> dari <b>{questions.length}</b> soal.</p>
+          <h2 id="submit-modal-title">{isArabic?'تسليم الاختبار؟':'Kumpulkan Ujian?'}</h2>
+          <p>{isArabic?<>لقد أجبت على <b>{answeredCount}</b> من أصل <b>{questions.length}</b> أسئلة.</>:<>Anda sudah menjawab <b>{answeredCount}</b> dari <b>{questions.length}</b> soal.</>}</p>
           {answeredCount<questions.length&&<div className="exam-warning" style={{marginTop:0,marginBottom:14}}>
-            <AlertTriangle size={15}/><span>Perhatian: Masih ada <b>{questions.length-answeredCount}</b> soal yang belum dijawab.</span>
+            <AlertTriangle size={15}/><span>{isArabic?<>تنبيه: لا يزال هناك <b>{questions.length-answeredCount}</b> أسئلة لم تتم الإجابة عليها.</>:<>Perhatian: Masih ada <b>{questions.length-answeredCount}</b> soal yang belum dijawab.</>}</span>
           </div>}
-          <p style={{fontSize:'12px',color:'#6b7c72',marginBottom:0}}>Pastikan seluruh jawaban telah diperiksa. Setelah dikumpulkan, ujian akan diselesaikan dan jawaban tidak dapat diubah kembali.</p>
+          <p style={{fontSize:'12px',color:'#6b7c72',marginBottom:0}}>{isArabic?'تأكد من مراجعة جميع إجاباتك. بعد تسليم الاختبار، لن تتمكن من تعديل الإجابات.':'Pastikan seluruh jawaban telah diperiksa. Setelah dikumpulkan, ujian akan diselesaikan dan jawaban tidak dapat diubah kembali.'}</p>
           <div className="preflight-actions" style={{marginTop:18}}>
-            <button className="secondary" onClick={()=>setShowSubmitModal(false)} disabled={busy}>Periksa Kembali</button>
-            <button className="portal-start" disabled={busy} onClick={()=>performSubmit(false)}>{busy?'Menyinkronkan…':<><Check size={14}/> Ya, Kumpulkan Ujian</>}</button>
+            <button className="secondary" onClick={()=>setShowSubmitModal(false)} disabled={busy}>{isArabic?'مراجعة الأسئلة':'Periksa Kembali'}</button>
+            <button className="portal-start" disabled={busy} onClick={()=>performSubmit(false)}>{busy?(isArabic?'جاري الإرسال…':'Menyinkronkan…'):<><Check size={14}/> {isArabic?'نعم، تسليم الاختبار':'Ya, Kumpulkan Ujian'}</>}</button>
           </div>
         </section>
       </div>}
@@ -583,33 +605,48 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
               const label=String.fromCharCode(65+i),chosen=answers[question.id]===label;
               return <button key={`${question.id}-${i}`} className={chosen?'chosen':''} disabled={!draftReady||screenBlocked||fullscreenLost||Boolean(storageError)||violationReviewRequired} onClick={()=>saveAnswer(question.id,label)}><span>{label}</span><b><FormulaText>{option}</FormulaText></b>{chosen&&<Check size={17}/>}</button>;
             })}</div>
-          ):<><textarea ref={textareaRef} className="essay-answer" dir="auto" value={answers[question.id]||''} disabled={!draftReady||screenBlocked||fullscreenLost||Boolean(storageError)||violationReviewRequired} onKeyDown={handleAnswerKeyDown} onChange={e=>saveAnswer(question.id,e.target.value)} placeholder={session.languageCode==='ar'?'اكتب إجابتك هنا…':'Tulis jawaban di sini…'}/>
-            {session.languageCode==='ar'&&<div className="arabic-keyboard"><div className="keyboard-head"><b>لوحة المفاتيح العربية</b><button disabled={violationReviewRequired} onClick={()=>setShowKeyboard(!showKeyboard)}>{showKeyboard?'Sembunyikan':'Tampilkan'}</button></div>{showKeyboard&&!violationReviewRequired&&<ArabicKeyboard onInsert={insertArabic} onInsertMark={insertCombiningMark} onBackspace={deletePrevious} onEnter={()=>insertArabic('\n')}/>}</div>}</>}
+          ):<><textarea ref={textareaRef} className={`essay-answer ${isRtlAnswer?'is-rtl':''}`} dir={isRtlAnswer?'rtl':'auto'} lang={isArabic?'ar':(session.languageCode||'id')} value={answers[question.id]||''} disabled={!draftReady||screenBlocked||fullscreenLost||Boolean(storageError)||violationReviewRequired} onKeyDown={handleAnswerKeyDown} onChange={e=>{
+              const val=e.target.value;saveAnswer(question.id,val);
+              if(textareaRef.current&&(isArabic||/[\u0600-\u06FF]/.test(val))){
+                textareaRef.current.dir='rtl';textareaRef.current.style.direction='rtl';textareaRef.current.style.textAlign='right';
+              }
+            }} placeholder={isArabic?'اكتب إجابتك هنا…':'Tulis jawaban di sini…'}/>
+            {isArabic&&<div className="arabic-keyboard" dir="rtl"><div className="keyboard-head"><b>لوحة المفاتيح العربية</b><button disabled={violationReviewRequired} onClick={()=>setShowKeyboard(!showKeyboard)}>{showKeyboard?(isArabic?'إخفاء':'Sembunyikan'):(isArabic?'إظهار':'Tampilkan')}</button></div>{showKeyboard&&!violationReviewRequired&&<ArabicKeyboard onInsert={insertArabic} onInsertMark={insertCombiningMark} onBackspace={deletePrevious} onEnter={()=>insertArabic('\n')}/>}</div>}</>}
         </article>
-        <div className="exam-navigation"><button disabled={index===0||violationReviewRequired} onClick={()=>setIndex(x=>Math.max(0,x-1))}><ChevronLeft size={14}/>Sebelumnya</button><span>{answeredCount} dari {questions.length} soal terjawab</span><button className="next-question" disabled={index>=questions.length-1||violationReviewRequired} onClick={()=>setIndex(x=>Math.min(questions.length-1,x+1))}>Berikutnya<ChevronRight size={14}/></button></div>
+        <div className="exam-navigation">
+          <button disabled={index===0||violationReviewRequired} onClick={()=>setIndex(x=>Math.max(0,x-1))}>
+            {isArabic?<><ChevronRight size={14}/>السابق</>:<><ChevronLeft size={14}/>Sebelumnya</>}
+          </button>
+          <span>{isArabic?`تمت الإجابة على ${answeredCount} من ${questions.length} أسئلة`:`${answeredCount} dari ${questions.length} soal terjawab`}</span>
+          <button className="next-question" disabled={index>=questions.length-1||violationReviewRequired} onClick={()=>setIndex(x=>Math.min(questions.length-1,x+1))}>
+            {isArabic?<>التالي<ChevronLeft size={14}/></>:<>Berikutnya<ChevronRight size={14}/></>}
+          </button>
+        </div>
       </>}
     </main></div>
-    <div className="exam-watermark" aria-hidden="true">IMBS CBT Â· {user.name} ({user.username})</div>
+    <div className="exam-watermark" aria-hidden="true">IMBS CBT · {user.name} ({user.username})</div>
   </div>;
 }
 
-const ARABIC_HARAKAT={q:'\u064e',e:'\u064f',a:'\u0650',x:'\u0652',w:'\u064b',r:'\u064c',s:'\u064d','`':'\u0651','~':'\u0651'};
-const ARABIC_KEYBOARD_ROWS=[
-  [{key:'`',label:'`',value:'\u0630'},...['1','2','3','4','5','6','7','8','9','0','-','='].map(key=>({key,label:key,value:key})),{special:'backspace',label:'⌫'}],
-  [{special:'tab',label:'TAB'},...['q','w','e','r','t','y','u','i','o','p','[',']','\\'].map((key,index)=>({key,label:key,value:['\u0636','\u0635','\u062b','\u0642','\u0641','\u063a','\u0639','\u0647','\u062e','\u062d','\u062c','\u062f','\\'][index]}))],
-  [{special:'caps',label:'CAPS'},...['a','s','d','f','g','h','j','k','l',';','\''].map((key,index)=>({key,label:key,value:['\u0634','\u0633','\u064a','\u0628','\u0644','\u0627','\u062a','\u0646','\u0645','\u0643','\u0637'][index]})),{special:'enter',label:'ENTER'}],
-  [{special:'shift',label:'SHIFT'},...['z','x','c','v','b','n','m',',','.','/'].map((key,index)=>({key,label:key,value:['\u0626','\u0621','\u0624','\u0631','\u0644\u0627','\u0649','\u0629','\u0648','\u0632','\u0638'][index]})),{special:'shift',label:'SHIFT'}],
-  [{special:'space',label:'SPACE'}],
-];
-
 function ArabicKeyboard({onInsert,onInsertMark,onBackspace,onEnter}){
   const [shiftActive,setShiftActive]=useState(false);
-  const press=key=>{if(shiftActive&&ARABIC_HARAKAT[key])onInsertMark(ARABIC_HARAKAT[key]);else onInsert(key);};
-  const pressSpecial=special=>{if(special==='backspace')onBackspace();else if(special==='enter')onEnter();else if(special==='tab')onInsert('\t');else if(special==='space')onInsert(' ');else if(special==='shift')setShiftActive(current=>!current);};
+  const press=item=>{
+    const res=resolveArabicKeyPress(item,shiftActive);
+    if(res.type==='mark')onInsertMark(res.value);
+    else if(res.value)onInsert(res.value);
+    if(shiftActive)setShiftActive(false);
+  };
+  const pressSpecial=special=>{
+    if(special==='backspace')onBackspace();
+    else if(special==='enter')onEnter();
+    else if(special==='tab')onInsert('\t');
+    else if(special==='space')onInsert(' ');
+    else if(special==='shift'||special==='caps')setShiftActive(current=>!current);
+  };
   return <div className={`arabic-keyboard-layout${shiftActive?' shift-active':''}`}>
     {ARABIC_KEYBOARD_ROWS.map((row,rowIndex)=><div className={`keyboard-row keyboard-row-${rowIndex+1}`} key={rowIndex}>{row.map((item,index)=>{
       const display=item.key&&shiftActive&&ARABIC_HARAKAT[item.key]?ARABIC_HARAKAT[item.key]:item.value||item.label;
-      return <button type="button" className={`keyboard-key ${item.special||''}`} key={`${rowIndex}-${index}`} onClick={()=>item.special?pressSpecial(item.special):press(item.key)} aria-label={item.special||item.key}>
+      return <button type="button" className={`keyboard-key ${item.special||''}`} key={`${rowIndex}-${index}`} onClick={()=>item.special?pressSpecial(item.special):press(item)} aria-label={item.special||item.value||item.key}>
         {item.key&&<small>{item.label}</small>}<b>{display}</b>
       </button>;
     })}</div>)}

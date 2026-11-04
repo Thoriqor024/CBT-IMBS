@@ -146,12 +146,23 @@
 }
 
 .exam-stimulus-card {
-  margin-bottom: 20px;
-  padding: 18px 20px;
+  margin-bottom: 16px;
+  padding: 14px 18px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-left: 4px solid #248a63;
   border-radius: 10px;
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+}
+
+.exam-stimulus-card[dir="rtl"], [dir="rtl"] .exam-stimulus-card {
+  border-left: 1px solid #e2e8f0;
+  border-right: 4px solid #248a63;
+  text-align: right;
 }
 
 .exam-stimulus-badge {
