@@ -59,8 +59,8 @@ services:
       ROTATE_DEMO_SEED_PASSWORDS: ${ROTATE_DEMO_SEED_PASSWORDS:-false}
       SEED_DEMO_STUDENTS: ${SEED_DEMO_STUDENTS:-false}
       LEGACY_BOOTSTRAP_SEED_ENABLED: ${LEGACY_BOOTSTRAP_SEED_ENABLED:-true}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://localhost:8443}
-      CORS_ORIGINS: "${CORS_ORIGINS:-https://localhost:8443}"
+      PUBLIC_BASE_URL: https://10.10.4.235:8443
+      CORS_ORIGINS: "${CORS_ORIGINS:-https://localhost:8443},https://10.10.4.235:8443"
       LOCAL_LOAD_TEST_MODE: ${LOCAL_LOAD_TEST_MODE:-false}
       COOKIE_SECURE: "false"
     depends_on:
@@ -87,9 +87,9 @@ services:
     container_name: cbt-imbs
     ports:
       - "127.0.0.1:8080:80"
-      - "127.0.0.1:8443:443"
+      - "0.0.0.0:8443:443"
     environment:
-      TLS_HOST: ${TLS_HOST:-localhost}
+      TLS_HOST: 10.10.4.235
     volumes:
       - cbt-imbs-certs:/etc/nginx/certs
     depends_on:
