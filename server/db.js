@@ -48,6 +48,8 @@ export async function initializeDatabase(targetPool = pool) {
         password_hash TEXT NOT NULL, class_name TEXT, active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_key ON users (lower(email)) WHERE email IS NOT NULL;
       CREATE TABLE IF NOT EXISTS subjects (
         id BIGSERIAL PRIMARY KEY, name TEXT UNIQUE NOT NULL, created_by BIGINT REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
