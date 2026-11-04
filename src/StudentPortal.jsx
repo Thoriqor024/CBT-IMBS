@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, BookOpen, Check, CheckCircle2, ChevronLeft, ChevronRight, CircleAlert, Clock3, GraduationCap, LockKeyhole, LogOut, MonitorCheck, MonitorX, RefreshCw, Save, ShieldCheck, Wifi, WifiOff } from 'lucide-react';
+import { AlertTriangle, BookOpen, Check, CheckCircle2, ChevronLeft, ChevronLeftIcon, ChevronRight, ChevronsRightIcon, CircleAlert, Clock3, GraduationCap, LockKeyhole, LogOut, MonitorCheck, MonitorX, RefreshCw, Save, ShieldCheck, Wifi, WifiOff } from 'lucide-react';
 import { api } from './api';
 import { deleteSessionDrafts, getDrafts, markDraftSynced, saveDraft, verifyEncryptedStorage } from './examStorage';
 import { FormulaText } from './FormulaText.jsx';
@@ -496,7 +496,7 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
       <div className="map-legend"><span><i className="map-current"/>{isArabic?'السؤال الحالي':'Nomor aktif'}</span><span><i className="map-done"/>{isArabic?'تمت الإجابة':'Sudah dijawab'}</span></div>
       <div className="exam-sidebar-nav">
         <button type="button" className="sidebar-nav-btn prev" disabled={index===0||violationReviewRequired} onClick={()=>setIndex(x=>Math.max(0,x-1))} title={isArabic?'السؤال السابق':'Soal Sebelumnya'}>
-          {isArabic?<><ChevronRight size={14}/>السابق</>:<><ChevronLeft size={14}/>Sebelumnya</>}
+          {isArabic?<><ChevronLeftIcon size={14}/>السابق</>:<><ChevronsRightIcon size={14}/>Sebelumnya</>}
         </button>
         <button type="button" className="sidebar-nav-btn next" disabled={index>=questions.length-1||violationReviewRequired} onClick={()=>setIndex(x=>Math.min(questions.length-1,x+1))} title={isArabic?'السؤال التالي':'Soal Berikutnya'}>
           {isArabic?<>التالي<ChevronLeft size={14}/></>:<>Berikutnya<ChevronRight size={14}/></>}
