@@ -1,8 +1,7 @@
-const CACHE_NAME = 'cbt-imbs-shell-v1';
+const CACHE_NAME = 'cbt-imbs-shell-v2';
 const SHELL_URLS = [
   '/',
   '/index.html',
-  '/src/main.jsx',
 ];
 
 self.addEventListener('install', event => {
@@ -33,7 +32,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Untuk navigasi dokumen (HTML) saat F5 ditekan saat offline:
+  // Untuk navigasi dokumen (HTML): NETWORK-FIRST agar selalu mendapat index.html terbaru dengan hash asset yang benar
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
@@ -45,7 +44,7 @@ self.addEventListener('fetch', event => {
           return response;
         })
         .catch(async () => {
-          // Ketika offline dan user refresh dengan F5, kembalikan cached index.html
+          // Ketika offline, gunakan cache index.html
           const cached = await caches.match(request);
           if (cached) return cached;
           const rootCached = await caches.match('/index.html') || await caches.match('/');
@@ -61,16 +60,24 @@ self.addEventListener('fetch', event => {
   // Untuk aset statis (js, css, images, fonts):
   event.respondWith(
     caches.match(request).then(cachedResponse => {
-      const fetchPromise = fetch(request).then(networkResponse => {
+      if (cachedResponse) {
+        // Return cached, tapi update di background jika status 200
+        fetch(request).then(networkResponse => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          }
+        }).catch(() => {});
+        return cachedResponse;
+      }
+
+      return fetch(request).then(networkResponse => {
         if (networkResponse && networkResponse.status === 200) {
           const clone = networkResponse.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
         }
         return networkResponse;
-      }).catch(() => cachedResponse);
-
-      return cachedResponse || fetchPromise;
+      });
     })
   );
 });
-
