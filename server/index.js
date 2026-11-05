@@ -1768,6 +1768,43 @@ app.get('/api/exams/:id/analysis',allow('admin','teacher'),requireExamScope,asyn
 
   res.json({ exam, items: questionsWithMetrics });
 }));
+app.get('/api/exams/:id/student-grades',allow('admin','teacher'),requireExamScope,asyncRoute(async(req,res)=>{
+  const examId=Number(req.params.id);
+  const examQuery=await pool.query('SELECT e.id,e.title,e.class_name AS "className",e.status,s.name AS subject FROM exams e JOIN question_banks b ON b.id=e.bank_id JOIN subjects s ON s.id=b.subject_id WHERE e.id=$1',[examId]);
+  if(!examQuery.rowCount)return res.status(404).json({error:'Ujian tidak ditemukan.'});
+  const exam=examQuery.rows[0];
+  const q=await pool.query(`SELECT es.student_id AS "studentId",u.class_name AS "studentClassName",u.full_name AS "studentName",u.username,es.status,es.final_score AS "finalScore",es.finished_at AS "finishedAt",
+    COALESCE(overview.mc_correct_count,0)::int AS "mcCorrectCount",
+    COALESCE(overview.mc_wrong_count,0)::int AS "mcWrongCount",
+    COALESCE(overview.mc_unanswered_count,0)::int AS "mcUnansweredCount",
+    COALESCE(overview.mc_points_earned,0)::numeric AS "mcPointsEarned",
+    COALESCE(overview.mc_points_total,0)::numeric AS "mcPointsTotal",
+    COALESCE(overview.essay_count,0)::int AS "essayCount",
+    COALESCE(overview.essay_pending,FALSE) AS "essayPending",
+    COALESCE(violation_audit.pending_count,0)::int AS "pendingViolationCount"
+    FROM exam_sessions es JOIN exams e ON e.id=es.exam_id JOIN question_banks b ON b.id=e.bank_id JOIN users u ON u.id=es.student_id
+    LEFT JOIN LATERAL (
+      SELECT
+        count(*) FILTER (WHERE q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))=UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))) AS mc_correct_count,
+        count(*) FILTER (WHERE q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))<>UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))) AS mc_wrong_count,
+        count(*) FILTER (WHERE q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NULL) AS mc_unanswered_count,
+        COALESCE(SUM(q.points) FILTER (WHERE q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))=UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))),0) AS mc_points_earned,
+        COALESCE(SUM(q.points) FILTER (WHERE q.type='mc'),0) AS mc_points_total,
+        count(*) FILTER (WHERE q.type='essay') AS essay_count,
+        COALESCE(BOOL_OR(q.type='essay' AND r.essay_score IS NULL),FALSE) AS essay_pending
+      FROM exam_questions eq JOIN questions q ON q.id=eq.question_id
+      LEFT JOIN responses r ON r.session_id=eq.session_id AND r.question_id=q.id
+      WHERE eq.session_id=es.id
+    ) overview ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT count(*) FILTER(WHERE ve.review_status='pending' AND ve.code<>'admin_reset') AS pending_count
+      FROM violation_events ve WHERE ve.session_id=es.id
+    ) violation_audit ON TRUE
+    WHERE es.exam_id=$1 AND es.status IN ('completed','locked') AND ($2='admin' OR EXISTS(
+      SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$3 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*'))))
+    ) ORDER BY u.full_name`,[examId,req.session.user.role,req.session.user.id]);
+  res.json({ exam, students: q.rows });
+}));
 app.get('/api/monitor',allow('admin','teacher','pengawas'),asyncRoute(async(req,res)=>{
   const q=await pool.query(`SELECT e.id AS "examId",e.title AS "examTitle",e.status AS "examStatus",es.id,es.student_id AS "studentId",es.status,
       es.violation_count AS "violationCount",es.final_score AS score,es.last_ping_at AS "lastPingAt",u.full_name AS name,u.username,u.class_name AS "className",
