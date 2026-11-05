@@ -2166,10 +2166,39 @@ const server = app.listen(port,'0.0.0.0',()=>console.log(`IMBS CBT API listening
 const poolSampler = observability.createPoolSampler({ pool:controlPool });
 poolSampler.start();
 
+// Auto-collect: finish expired in_progress sessions whose browser closed without submitting.
+// Runs every 60s. Skips sessions with pending violation review (those need admin decision first).
+async function sweepExpiredSessions() {
+  try {
+    const expired = await pool.query(`
+      SELECT es.id, es.student_id
+      FROM exam_sessions es
+      JOIN exams e ON e.id = es.exam_id
+      WHERE es.status = 'in_progress'
+        AND (es.started_at + e.duration_minutes * INTERVAL '1 minute') <= NOW()
+        AND (
+          SELECT count(*) FROM violation_events ve
+          WHERE ve.session_id = es.id AND ve.review_status = 'pending'
+        ) = 0
+    `);
+    for (const row of expired.rows) {
+      await finishStudentSession(row.id, row.student_id).catch(err =>
+        console.error(`[sweep] failed session ${row.id}:`, err.message)
+      );
+    }
+    if (expired.rows.length > 0)
+      console.log(`[sweep] auto-finished ${expired.rows.length} expired session(s)`);
+  } catch (err) {
+    console.error('[sweep] error:', err.message);
+  }
+}
+const sweepInterval = setInterval(sweepExpiredSessions, 60_000);
+
 let shuttingDown = false;
 const shutdown = () => {
   if (shuttingDown) return;
   shuttingDown = true;
+  clearInterval(sweepInterval);
   poolSampler.stop();
   server.close(() => {
     Promise.all([pool.end(),controlPlaneRuntime?.close()]).catch(()=>{});
