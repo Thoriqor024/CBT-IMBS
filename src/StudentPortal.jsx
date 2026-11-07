@@ -588,17 +588,19 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
                 const currentAnswer=String(answers[question.id]||'');
                 const chosenList=currentAnswer?currentAnswer.split(',').map(s=>s.trim()).filter(Boolean):[];
                 const chosen=chosenList.includes(label);
+                const disabled=!draftReady||screenBlocked||fullscreenLost||Boolean(storageError)||violationReviewRequired;
                 const toggleOption=()=>{
+                  if(disabled)return;
                   const nextList=chosen?chosenList.filter(l=>l!==label):[...chosenList,label];
                   nextList.sort();
                   saveAnswer(question.id,nextList.join(','));
                 };
-                return <div key={`${question.id}-${i}`} className={`complex-option-item${chosen?' selected':''}`}>
-                  <input type="checkbox" className="sr-only" checked={chosen} onChange={toggleOption} />
+                return <label key={`${question.id}-${i}`} className={`complex-option-item${chosen?' selected':''}${disabled?' disabled':''}`}>
+                  <input type="checkbox" className="sr-only" checked={chosen} disabled={disabled} onChange={toggleOption} />
                   <span className="option-letter">{chosen?<Check size={14} color="#fff"/>:label}</span>
                   <b className="option-text"><FormulaText>{option}</FormulaText></b>
                   {chosen&&<span className="option-selected">✓ Terpilih</span>}
-                </div>;
+                </label>;
               })}
             </div>
           ):question.type==='mc'?(

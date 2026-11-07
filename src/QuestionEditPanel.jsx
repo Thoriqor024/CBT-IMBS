@@ -80,13 +80,13 @@ export function QuestionEditPanel({ question, stimuli = [], locked, busy, error:
       <div className="question-option-grid">{form.options.map((option, index) => <label key={index}><span className="option-letter">{String.fromCharCode(65 + index)}</span><input dir="auto" value={option} onChange={event => update({ options: form.options.map((value, optionIndex) => optionIndex === index ? event.target.value : value) })}/></label>)}</div>
       {form.type === 'complex_mc' ? (
         <div className="complex-mc-keys">
-          <small>Kunci jawaban benar (centang minimal 1 opsi):</small>
+          <small>Kunci jawaban benar (pilih opsi yang merupakan kunci):</small>
           <div className="complex-keys-grid">
             {['A', 'B', 'C', 'D'].map((key, optIdx) => {
               const checked = currentComplexKeys.includes(key);
               const disabled = !form.options[optIdx]?.trim();
               return (
-                <label key={key} className={`complex-key-item${disabled ? ' disabled' : ''}`}>
+                <label key={key} className={`complex-key-item${disabled ? ' disabled' : ''}${checked ? ' selected checked' : ''}`}>
                   <input
                     type="checkbox"
                     checked={checked}
@@ -97,7 +97,12 @@ export function QuestionEditPanel({ question, stimuli = [], locked, busy, error:
                       update({ answerKey: nextKeys.join(',') });
                     }}
                   />
-                  <span>Opsi {key}</span>
+                  <div className="key-badge">{key}</div>
+                  <div className="key-info">
+                    <span className="key-text">Opsi {key}</span>
+                    <small className="key-sub">{disabled ? 'Isi opsi dulu' : checked ? 'Kunci Benar' : 'Bukan Kunci'}</small>
+                  </div>
+                  {checked && <span className="key-check">✓</span>}
                 </label>
               );
             })}

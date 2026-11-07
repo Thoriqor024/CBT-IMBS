@@ -138,37 +138,55 @@ function BankQuestionEditor({ type, index, question, stimuli = [], onChange }) {
     <label className="question-image-picker">Gambar pendukung (opsional)<span><ImagePlus size={14}/> {question.imageFile?.name || 'Pilih gambar JPG, PNG, atau WebP'}</span><input type="file" accept={IMAGE_ACCEPT} onChange={setImage}/></label>
     {question.imageFile && <><label>Deskripsi gambar<input maxLength="500" value={question.imageAltText || ''} onChange={event => onChange({ imageAltText: event.target.value })} placeholder="Jelaskan isi gambar untuk aksesibilitas"/></label><button type="button" className="remove-image-button" onClick={removeImage}><Trash2 size={13}/> Hapus pilihan gambar</button></>}
     {isEssay ? <label>Rubrik / panduan koreksi<textarea dir="auto" rows="3" value={question.rubric} onChange={event => onChange({ rubric: event.target.value })} placeholder="Jelaskan unsur jawaban yang dinilai"/></label> : <>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', margin: '4px 0 8px' }}>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
-          <input
-            type="checkbox"
-            checked={question.type === 'complex_mc'}
-            onChange={e => onChange({ type: e.target.checked ? 'complex_mc' : 'mc', answerKey: '' })}
-          />
-          <b>Pilihan Ganda Kompleks (jawaban benar lebih dari 1)</b>
-        </label>
-      </div>
+      <label className={`complex-toggle-card${question.type === 'complex_mc' ? ' active' : ''}`}>
+        <div className="complex-toggle-info">
+          <div className="key-badge" style={{
+            background: question.type === 'complex_mc' ? '#15803d' : '#f1f5f9',
+            color: question.type === 'complex_mc' ? '#fff' : '#475569',
+            fontSize: 12,
+            fontWeight: 800,
+          }}>
+            {question.type === 'complex_mc' ? '✓' : '•'}
+          </div>
+          <div>
+            <b>Pilihan Ganda Kompleks</b>
+            <small>Jawaban benar lebih dari satu dengan skema skor proporsional</small>
+          </div>
+        </div>
+        <span className="complex-toggle-status">{question.type === 'complex_mc' ? 'Mode Aktif' : 'Nonaktif'}</span>
+        <input
+          type="checkbox"
+          checked={question.type === 'complex_mc'}
+          onChange={e => onChange({ type: e.target.checked ? 'complex_mc' : 'mc', answerKey: '' })}
+        />
+      </label>
       <div className="question-option-grid">{question.options.map((option, optionIndex) => <label key={optionIndex}>Opsi {String.fromCharCode(65 + optionIndex)}<input dir="auto" value={option} onChange={event => updateOption(optionIndex, event.target.value)} placeholder={`Isi opsi ${String.fromCharCode(65 + optionIndex)}`}/></label>)}</div>
       {question.type === 'complex_mc' ? (
-        <div style={{ margin: '8px 0' }}>
-          <small style={{ display: 'block', marginBottom: 4, fontWeight: 600 }}>Kunci jawaban benar (centang opsi yang benar):</small>
-          <div style={{ display: 'flex', gap: 16 }}>
+        <div className="complex-mc-keys">
+          <small>Kunci jawaban benar (pilih opsi yang merupakan kunci):</small>
+          <div className="complex-keys-grid">
             {['A', 'B', 'C', 'D'].map((key, optionIndex) => {
-              const currentKeys = question.answerKey ? question.answerKey.split(',').map(s => s.trim()) : [];
+              const currentKeys = question.answerKey ? question.answerKey.split(',').map(s => s.trim()).filter(Boolean) : [];
               const isChecked = currentKeys.includes(key);
+              const disabled = !question.options[optionIndex]?.trim();
               return (
-                <label key={key} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+                <label key={key} className={`complex-key-item${disabled ? ' disabled' : ''}${isChecked ? ' selected checked' : ''}`}>
                   <input
                     type="checkbox"
                     checked={isChecked}
-                    disabled={!question.options[optionIndex]?.trim()}
+                    disabled={disabled}
                     onChange={e => {
                       const nextKeys = e.target.checked ? [...currentKeys, key] : currentKeys.filter(k => k !== key);
                       nextKeys.sort();
                       onChange({ answerKey: nextKeys.join(',') });
                     }}
                   />
-                  <span>Opsi {key}</span>
+                  <div className="key-badge">{key}</div>
+                  <div className="key-info">
+                    <span className="key-text">Opsi {key}</span>
+                    <small className="key-sub">{disabled ? 'Isi opsi dulu' : isChecked ? 'Kunci Benar' : 'Bukan Kunci'}</small>
+                  </div>
+                  {isChecked && <span className="key-check">✓</span>}
                 </label>
               );
             })}

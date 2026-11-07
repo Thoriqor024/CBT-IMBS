@@ -267,11 +267,14 @@ export const prepareBankQuestion = item => {
   } else if (!answerKey) {
     throw invalidQuestion('Soal essay harus memiliki rubrik atau panduan koreksi.');
   }
+  const normalizedKey = type === 'complex_mc'
+    ? [...new Set(answerKey.toUpperCase().split(/[^A-Z0-9]+/).map(k => k.trim()).filter(Boolean))].sort().join(',')
+    : answerKey;
   const rawStimulusId = item.stimulusId ?? item.stimulus_id;
   const stimulusId = rawStimulusId && Number.isInteger(Number(rawStimulusId)) && Number(rawStimulusId) > 0 ? Number(rawStimulusId) : null;
   const rawStimulusIndex = item.stimulusIndex ?? item.stimulus_index;
   const stimulusIndex = rawStimulusIndex !== undefined && rawStimulusIndex !== null && Number.isInteger(Number(rawStimulusIndex)) && Number(rawStimulusIndex) >= 0 ? Number(rawStimulusIndex) : null;
-  return { type, prompt, options, answerKey, points, stimulusId, stimulusIndex };
+  return { type, prompt, options, answerKey: normalizedKey, points, stimulusId, stimulusIndex };
 };
 async function teacherAssignments(userId, client=pool) {
   return (await client.query('SELECT subject_id AS "subjectId",class_name AS "className" FROM teacher_access WHERE teacher_id=$1',[userId])).rows;
@@ -369,25 +372,32 @@ async function calculateAndSaveFinalScore(client, sessionId) {
 
   for (const q of items.rows) {
     const points = Number(q.points) || 0;
+    let earned = 0;
     if (q.type === 'mc') {
       mcCount++;
       mcPointsTotal += points;
       const ans = String(q.answer || '').trim().toUpperCase();
       const key = String(q.answer_key || '').trim().toUpperCase();
       if (ans && ans === key) {
+        earned = points;
         mcPointsEarned += points;
       }
     } else if (q.type === 'complex_mc') {
       mcCount++;
       mcPointsTotal += points;
-      mcPointsEarned += scoreComplexMC(q.answer, q.answer_key, points);
+      earned = scoreComplexMC(q.answer, q.answer_key, points);
+      mcPointsEarned += earned;
     } else if (q.type === 'essay') {
       essayCount++;
       essayPointsTotal += points;
       if (q.essay_score !== null && q.essay_score !== undefined) {
         essayGradedCount++;
-        essayPointsEarned += (Number(q.essay_score) * points) / 100.0;
+        earned = (Number(q.essay_score) * points) / 100.0;
+        essayPointsEarned += earned;
       }
+    }
+    if (q.id && q.answer !== null && q.answer !== undefined) {
+      await client.query('UPDATE responses SET points_awarded=$1 WHERE session_id=$2 AND question_id=$3', [earned, sessionId, q.id]);
     }
   }
 
@@ -1193,7 +1203,7 @@ app.put('/api/teachers/:id/access',allow('admin'),asyncRoute(async(req,res)=>{
     res.json({id:Number(req.params.id),role,classes:classNames,subjectIds});
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }));
-app.get('/api/banks',allow('admin','teacher'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT b.id,b.grade,b.topic,s.id AS subject_id,s.name AS subject,s.language_code AS "languageCode",s.text_direction AS "textDirection",count(q.id)::int AS count,count(q.id) FILTER(WHERE q.type='mc')::int AS mc,count(q.id) FILTER(WHERE q.type='essay')::int AS essay,(SELECT count(*)::int FROM exams e WHERE e.bank_id=b.id) AS "examCount",(SELECT count(*)::int FROM exam_sessions es JOIN exams e ON e.id=es.exam_id WHERE e.bank_id=b.id) AS "sessionCount" FROM question_banks b JOIN subjects s ON s.id=b.subject_id LEFT JOIN questions q ON q.bank_id=b.id WHERE ($1='admin' OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-')))) GROUP BY b.id,s.id ORDER BY b.created_at DESC`,[req.session.user.role,req.session.user.id]);res.json(q.rows);}));
+app.get('/api/banks',allow('admin','teacher'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT b.id,b.grade,b.topic,s.id AS subject_id,s.name AS subject,s.language_code AS "languageCode",s.text_direction AS "textDirection",count(q.id)::int AS count,count(q.id) FILTER(WHERE q.type IN ('mc', 'complex_mc'))::int AS mc,count(q.id) FILTER(WHERE q.type='essay')::int AS essay,(SELECT count(*)::int FROM exams e WHERE e.bank_id=b.id) AS "examCount",(SELECT count(*)::int FROM exam_sessions es JOIN exams e ON e.id=es.exam_id WHERE e.bank_id=b.id) AS "sessionCount" FROM question_banks b JOIN subjects s ON s.id=b.subject_id LEFT JOIN questions q ON q.bank_id=b.id WHERE ($1='admin' OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-')))) GROUP BY b.id,s.id ORDER BY b.created_at DESC`,[req.session.user.role,req.session.user.id]);res.json(q.rows);}));
 app.delete('/api/banks/:id',allow('admin'),asyncRoute(async(req,res)=>{
   const client=await pool.connect();
   let mediaFiles=[];
@@ -1242,7 +1252,7 @@ app.post('/api/banks',allow('admin','teacher'),asyncRoute(async(req,res)=>{
     }
   }
   const prepared=questions.map(prepareBankQuestion);
-  const mcCount=prepared.filter(question=>question.type==='mc').length;
+  const mcCount=prepared.filter(question=>question.type==='mc'||question.type==='complex_mc').length;
   const essayCount=prepared.length-mcCount;
   const client=await pool.connect();
   try{
@@ -1676,12 +1686,16 @@ app.get('/api/banks/:id/analysis', allow('admin', 'teacher'), asyncRoute(async (
         WHERE es.status IN ('completed','locked') AND NULLIF(BTRIM(COALESCE(r.answer, '')), '') IS NOT NULL AND (
           (q.type = 'mc' AND UPPER(BTRIM(COALESCE(r.answer, ''))) = UPPER(BTRIM(COALESCE(eq.answer_key, q.answer_key))))
           OR
+          (q.type = 'complex_mc' AND (COALESCE(r.points_awarded, 0) >= q.points * 0.5 OR UPPER(BTRIM(COALESCE(r.answer, ''))) = UPPER(BTRIM(COALESCE(eq.answer_key, q.answer_key)))))
+          OR
           (q.type = 'essay' AND r.essay_score IS NOT NULL AND r.essay_score >= 50)
         )
       )::int AS "totalCorrect",
       count(DISTINCT r.session_id) FILTER (
         WHERE es.status IN ('completed','locked') AND NULLIF(BTRIM(COALESCE(r.answer, '')), '') IS NOT NULL AND (
           (q.type = 'mc' AND UPPER(BTRIM(COALESCE(r.answer, ''))) != UPPER(BTRIM(COALESCE(eq.answer_key, q.answer_key))))
+          OR
+          (q.type = 'complex_mc' AND COALESCE(r.points_awarded, 0) < q.points * 0.5 AND UPPER(BTRIM(COALESCE(r.answer, ''))) != UPPER(BTRIM(COALESCE(eq.answer_key, q.answer_key))))
           OR
           (q.type = 'essay' AND (r.essay_score IS NULL OR r.essay_score < 50))
         )
@@ -1735,12 +1749,16 @@ app.get('/api/exams/:id/analysis',allow('admin','teacher'),requireExamScope,asyn
         WHERE NULLIF(BTRIM(COALESCE(r.answer, '')), '') IS NOT NULL AND (
           (q.type = 'mc' AND UPPER(BTRIM(COALESCE(r.answer, ''))) = UPPER(BTRIM(COALESCE(eq.answer_key, q.answer_key))))
           OR
+          (q.type = 'complex_mc' AND (COALESCE(r.points_awarded, 0) >= q.points * 0.5 OR UPPER(BTRIM(COALESCE(r.answer, ''))) = UPPER(BTRIM(COALESCE(eq.answer_key, q.answer_key)))))
+          OR
           (q.type = 'essay' AND r.essay_score IS NOT NULL AND r.essay_score >= 50)
         )
       )::int AS "totalCorrect",
       count(DISTINCT r.session_id) FILTER (
         WHERE NULLIF(BTRIM(COALESCE(r.answer, '')), '') IS NOT NULL AND (
           (q.type = 'mc' AND UPPER(BTRIM(COALESCE(r.answer, ''))) != UPPER(BTRIM(COALESCE(eq.answer_key, q.answer_key))))
+          OR
+          (q.type = 'complex_mc' AND COALESCE(r.points_awarded, 0) < q.points * 0.5 AND UPPER(BTRIM(COALESCE(r.answer, ''))) != UPPER(BTRIM(COALESCE(eq.answer_key, q.answer_key))))
           OR
           (q.type = 'essay' AND (r.essay_score IS NULL OR r.essay_score < 50))
         )
@@ -1785,11 +1803,11 @@ app.get('/api/exams/:id/student-grades',allow('admin','teacher'),requireExamScop
     FROM exam_sessions es JOIN exams e ON e.id=es.exam_id JOIN question_banks b ON b.id=e.bank_id JOIN users u ON u.id=es.student_id
     LEFT JOIN LATERAL (
       SELECT
-        count(*) FILTER (WHERE q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))=UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))) AS mc_correct_count,
-        count(*) FILTER (WHERE q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))<>UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))) AS mc_wrong_count,
-        count(*) FILTER (WHERE q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NULL) AS mc_unanswered_count,
-        COALESCE(SUM(q.points) FILTER (WHERE q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))=UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))),0) AS mc_points_earned,
-        COALESCE(SUM(q.points) FILTER (WHERE q.type='mc'),0) AS mc_points_total,
+        count(*) FILTER (WHERE (q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))=UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))) OR (q.type='complex_mc' AND COALESCE(r.points_awarded,0) >= q.points)) AS mc_correct_count,
+        count(*) FILTER (WHERE (q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))<>UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))) OR (q.type='complex_mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND COALESCE(r.points_awarded,0) < q.points)) AS mc_wrong_count,
+        count(*) FILTER (WHERE q.type IN ('mc','complex_mc') AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NULL) AS mc_unanswered_count,
+        COALESCE(SUM(COALESCE(r.points_awarded, CASE WHEN q.type='mc' AND UPPER(BTRIM(COALESCE(r.answer,'')))=UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key))) THEN q.points ELSE 0 END)) FILTER (WHERE q.type IN ('mc','complex_mc')),0) AS mc_points_earned,
+        COALESCE(SUM(q.points) FILTER (WHERE q.type IN ('mc','complex_mc')),0) AS mc_points_total,
         count(*) FILTER (WHERE q.type='essay') AS essay_count,
         COALESCE(BOOL_OR(q.type='essay' AND r.essay_score IS NULL),FALSE) AS essay_pending
       FROM exam_questions eq JOIN questions q ON q.id=eq.question_id
@@ -2099,11 +2117,11 @@ app.get('/api/results',allow('admin','teacher'),asyncRoute(async(req,res)=>{
     FROM exam_sessions es JOIN exams e ON e.id=es.exam_id JOIN question_banks b ON b.id=e.bank_id JOIN users u ON u.id=es.student_id
     LEFT JOIN LATERAL (
       SELECT
-        count(*) FILTER (WHERE q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))=UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))) AS mc_correct_count,
-        count(*) FILTER (WHERE q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))<>UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))) AS mc_wrong_count,
-        count(*) FILTER (WHERE q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NULL) AS mc_unanswered_count,
-        COALESCE(SUM(q.points) FILTER (WHERE q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))=UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))),0) AS mc_points_earned,
-        COALESCE(SUM(q.points) FILTER (WHERE q.type='mc'),0) AS mc_points_total,
+        count(*) FILTER (WHERE (q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))=UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))) OR (q.type='complex_mc' AND COALESCE(r.points_awarded,0) >= q.points)) AS mc_correct_count,
+        count(*) FILTER (WHERE (q.type='mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND UPPER(BTRIM(COALESCE(r.answer,'')))<>UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key)))) OR (q.type='complex_mc' AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NOT NULL AND COALESCE(r.points_awarded,0) < q.points)) AS mc_wrong_count,
+        count(*) FILTER (WHERE q.type IN ('mc','complex_mc') AND NULLIF(BTRIM(COALESCE(r.answer,'')),'') IS NULL) AS mc_unanswered_count,
+        COALESCE(SUM(COALESCE(r.points_awarded, CASE WHEN q.type='mc' AND UPPER(BTRIM(COALESCE(r.answer,'')))=UPPER(BTRIM(COALESCE(eq.answer_key,q.answer_key))) THEN q.points ELSE 0 END)) FILTER (WHERE q.type IN ('mc','complex_mc')),0) AS mc_points_earned,
+        COALESCE(SUM(q.points) FILTER (WHERE q.type IN ('mc','complex_mc')),0) AS mc_points_total,
         count(*) FILTER (WHERE q.type='essay') AS essay_count,
         COALESCE(BOOL_OR(q.type='essay' AND r.essay_score IS NULL),FALSE) AS essay_pending
       FROM exam_questions eq JOIN questions q ON q.id=eq.question_id
