@@ -14,6 +14,7 @@ import 'katex/dist/katex.min.css';
 import './question-content.css';
 import './admin-actions.css';
 import './settings.css';
+import './exam-rooms.css';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {

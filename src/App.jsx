@@ -3,7 +3,7 @@ import readXlsxFile from 'read-excel-file/browser';
 import { exportResults } from './resultsExport.js';
 import { exportItemAnalysis } from './itemAnalysisExport.js';
 import { exportQuestionBank } from './questionBankExport.js';
-import { LayoutDashboard, BookOpen, Users, ClipboardList, Database, ChartNoAxesColumn, BarChart3, Settings, Search, Bell, Plus, ChevronDown, MoreHorizontal, ArrowUpRight, Clock3, CircleCheck, CircleAlert, Sparkles, FileSpreadsheet, Shuffle, ChevronRight, X, Menu, GraduationCap, BookMarked, CalendarDays, Layers3, Check, Download, Upload, Eye, Trash2, ShieldCheck, Scale, Wifi, CircleHelp, LogOut, KeyRound, Play, Pause, LockKeyhole, RefreshCw, Pencil, Copy } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Users, ClipboardList, ChartNoAxesColumn, BarChart3, Settings, Search, Bell, Plus, ChevronDown, MoreHorizontal, ArrowUpRight, Clock3, CircleCheck, CircleAlert, Sparkles, FileSpreadsheet, Shuffle, ChevronRight, X, Menu, GraduationCap, BookMarked, CalendarDays, Layers3, Check, Download, Upload, Eye, Trash2, ShieldCheck, Scale, Wifi, CircleHelp, LogOut, KeyRound, Play, Pause, LockKeyhole, RefreshCw, Pencil, Copy, DoorOpen } from 'lucide-react';
 import { api } from './api';
 import { getInitialSchoolCode, saveLastSchoolCode } from './tenantDiscovery.js';
 import StudentPortal from './StudentPortal.jsx';
@@ -17,8 +17,9 @@ import { downloadStudentImportTemplate } from './studentImportFormat.js';
 import { downloadTeacherImportTemplate } from './teacherImportFormat.js';
 import PlatformOwnerLogin from './PlatformOwnerLogin.jsx';
 import PlatformOwnerConsole from './PlatformOwnerConsole.jsx';
+import ExamRoomsPage from './ExamRoomsPage.jsx';
 
-const nav=[['Ringkasan',LayoutDashboard],['Mata Pelajaran',BookMarked],['Bank Soal',BookOpen],['Siswa',Users],['Ujian',ClipboardList],['Pantau Ujian',Eye],['Hasil Ujian',ChartNoAxesColumn],['Analisis Soal',BarChart3],['Koreksi Nilai Siswa',Pencil]];
+const nav=[['Ringkasan',LayoutDashboard],['Mata Pelajaran',BookMarked],['Bank Soal',BookOpen],['Siswa',Users],['Ujian',ClipboardList],['Pantau Ujian',Eye],['Hasil Ujian',ChartNoAxesColumn],['Analisis Soal',BarChart3],['Koreksi Nilai Siswa',Pencil],['Ruang Ujian',DoorOpen]];
 const DEFAULT_SETTINGS={schoolName:'IMBS Islamic School',academicYear:'2026/2027',semester:'Ganjil',classes:['VII A','VII B','VIII A','VIII B','IX A','IX B'],grades:['VII','VIII','IX'],defaultExamDurationMinutes:90,violationThreshold:2,mcWeightPercentage:50,essayWeightPercentage:50};
 const copySettings=settings=>({...settings,classes:[...settings.classes],grades:[...settings.grades]});
 const showDemoAccounts=import.meta.env.VITE_SHOW_DEMO_ACCOUNTS==='true';
@@ -34,11 +35,12 @@ export default function App(){
   const [subjectReturnModal,setSubjectReturnModal]=useState('');
   const [user,setUser]=useState(null),[booting,setBooting]=useState(true),[page,setPage]=useState('Ringkasan'),[mobile,setMobile]=useState(false),[modal,setModal]=useState(''),[toast,setToast]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const [students,setStudents]=useState([]),[banks,setBanks]=useState([]),[subjects,setSubjects]=useState([]),[exams,setExams]=useState([]),[results,setResults]=useState([]),[dashboard,setDashboard]=useState({students:0,banks:0,exams:0,average:0}),[query,setQuery]=useState(''),[selectedBank,setSelectedBank]=useState(null),[questions,setQuestions]=useState([]),[selectedExam,setSelectedExam]=useState(null),[monitor,setMonitor]=useState([]),[monitorRefreshKey,setMonitorRefreshKey]=useState(0),[pinInfo,setPinInfo]=useState({available:false,issuedAt:null,expiresAt:null}),[pinValidityMinutes,setPinValidityMinutes]=useState('15'),[credentials,setCredentials]=useState([]),[selectedResult,setSelectedResult]=useState(null),[essayResponses,setEssayResponses]=useState([]),[releasedPin,setReleasedPin]=useState(''),[selectedGradeExam,setSelectedGradeExam]=useState(null),[studentGrades,setStudentGrades]=useState([]),[gradesLoading,setGradesLoading]=useState(false),[schoolSettings,setSchoolSettings]=useState(copySettings(DEFAULT_SETTINGS)),[settingsForm,setSettingsForm]=useState(copySettings(DEFAULT_SETTINGS));
-  const [studentForm,setStudentForm]=useState({name:'',email:'',className:DEFAULT_SETTINGS.classes[0]}),[bankForm,setBankForm]=useState({subjectId:'',grade:DEFAULT_SETTINGS.grades[0],topic:'',mcCount:'0',essayCount:'0'}),[bankQuestions,setBankQuestions]=useState({mc:[],essay:[]}),[bankStimuli,setBankStimuli]=useState([]),[bankQuestionError,setBankQuestionError]=useState(''),[examForm,setExamForm]=useState({title:'',bankId:'',bankIds:[],className:DEFAULT_SETTINGS.classes[0],classNames:DEFAULT_SETTINGS.classes.slice(0,1),mcCount:1,essayCount:0,durationMinutes:DEFAULT_SETTINGS.defaultExamDurationMinutes});
+  const [studentForm,setStudentForm]=useState({name:'',email:'',className:DEFAULT_SETTINGS.classes[0]}),[bankForm,setBankForm]=useState({subjectId:'',grade:DEFAULT_SETTINGS.grades[0],topic:'',mcCount:'0',essayCount:'0'}),[bankQuestions,setBankQuestions]=useState({mc:[],essay:[]}),[bankStimuli,setBankStimuli]=useState([]),[bankQuestionError,setBankQuestionError]=useState(''),[examForm,setExamForm]=useState({title:'',bankId:'',bankIds:[],className:DEFAULT_SETTINGS.classes[0],classNames:DEFAULT_SETTINGS.classes.slice(0,1),mcCount:1,essayCount:0,durationMinutes:DEFAULT_SETTINGS.defaultExamDurationMinutes,subjectIds:[],roomIds:[]});
   const [questionForm,setQuestionForm]=useState({type:'mc',prompt:'',options:['','','',''],answerKey:'',points:1,imageFile:null,imageAltText:''}),[questionFormError,setQuestionFormError]=useState('');
   const [teacherFormError,setTeacherFormError]=useState('');
   const [profileFormError,setProfileFormError]=useState('');
   const [teacherList,setTeacherList]=useState([]),[teacherToEdit,setTeacherToEdit]=useState(null),[subjectToEdit,setSubjectToEdit]=useState(null),[selectedAnalysisBankId,setSelectedAnalysisBankId]=useState(''),[analysisData,setAnalysisData]=useState(null),[analysisLoading,setAnalysisLoading]=useState(false);
+  const [rooms,setRooms]=useState([]),[roomUnassigned,setRoomUnassigned]=useState([]);
   const isAdmin=user?.role==='admin';
   const isPengawas=user?.role==='pengawas';
   const isPlatformOwner=user?.role==='platform_owner';
@@ -47,7 +49,7 @@ export default function App(){
   const notify=message=>{setToast(message);setTimeout(()=>setToast(''),3000);};
   const loadItemAnalysis=useCallback(async(bankId)=>{if(!bankId){setAnalysisData(null);return;}setAnalysisLoading(true);try{const data=await api('/banks/'+bankId+'/analysis');setAnalysisData(data);}catch(err){setError(err.message);setAnalysisData(null);}finally{setAnalysisLoading(false);}},[]);
   const loadStudentGrades=useCallback(async(examId)=>{if(!examId){setStudentGrades([]);setSelectedGradeExam(null);return;}setGradesLoading(true);try{const data=await api('/exams/'+examId+'/student-grades');setStudentGrades(data.students||[]);setSelectedGradeExam(data.exam||null);}catch(err){setError(err.message);setStudentGrades([]);}finally{setGradesLoading(false);}},[]);
-  const loadAll=useCallback(async()=>{if(!user)return;setError('');try{if(user.role==='pengawas'){setExams(await api('/exams'));setDashboard({students:0,banks:0,exams:0,average:0});setStudents([]);setBanks([]);setSubjects([]);setResults([]);return;}const [d,s,b,sub,e,r,settings]=await Promise.all([api('/dashboard'),api('/students'),api('/banks'),api('/subjects'),api('/exams'),api('/results'),api('/settings')]);setDashboard(d);setStudents(s);setBanks(b);setSubjects(sub);setExams(e);setResults(r);setSchoolSettings(settings);setSettingsForm(copySettings(settings));setStudentForm(f=>({...f,className:settings.classes.includes(f.className)?f.className:settings.classes[0]}));setBankForm(f=>({...f,subjectId:f.subjectId||String(sub.find(x=>x.name==='Bahasa Arab')?.id||sub[0]?.id||''),grade:settings.grades.includes(f.grade)?f.grade:settings.grades[0]}));setExamForm(f=>({...f,bankId:f.bankId||String(b.find(x=>x.subject==='Bahasa Arab')?.id||b[0]?.id||''),bankIds:f.bankIds?.length?f.bankIds:(b[0]?[b[0].id]:[]),className:settings.classes.includes(f.className)?f.className:settings.classes[0],classNames:f.classNames?.length?f.classNames.filter(c=>settings.classes.includes(c)):[settings.classes[0]]}));}catch(err){setError(err.message);}},[user]);
+  const loadAll=useCallback(async()=>{if(!user)return;setError('');try{if(user.role==='pengawas'){setExams(await api('/exams'));setDashboard({students:0,banks:0,exams:0,average:0});setStudents([]);setBanks([]);setSubjects([]);setResults([]);return;}const [d,s,b,sub,e,r,settings,rd]=await Promise.all([api('/dashboard'),api('/students'),api('/banks'),api('/subjects'),api('/exams'),api('/results'),api('/settings'),api('/rooms')]);setDashboard(d);setStudents(s);setBanks(b);setSubjects(sub);setExams(e);setResults(r);setSchoolSettings(settings);setRooms(rd.rooms||[]);setRoomUnassigned(rd.unassigned||[]);setSettingsForm(copySettings(settings));setStudentForm(f=>({...f,className:settings.classes.includes(f.className)?f.className:settings.classes[0]}));setBankForm(f=>({...f,subjectId:f.subjectId||String(sub.find(x=>x.name==='Bahasa Arab')?.id||sub[0]?.id||''),grade:settings.grades.includes(f.grade)?f.grade:settings.grades[0]}));setExamForm(f=>({...f,bankId:f.bankId||String(b.find(x=>x.subject==='Bahasa Arab')?.id||b[0]?.id||''),bankIds:f.bankIds?.length?f.bankIds:(b[0]?[b[0].id]:[]),className:settings.classes.includes(f.className)?f.className:settings.classes[0],classNames:f.classNames?.length?f.classNames.filter(c=>settings.classes.includes(c)):[settings.classes[0]]}));}catch(err){setError(err.message);}},[user]);
   useEffect(()=>{
     api('/auth/me').then(r=>{
       setUser(r.user);
@@ -88,6 +90,9 @@ export default function App(){
   const deleteSubject=async subject=>{if(!window.confirm(`Hapus mata pelajaran "${subject.name}"? Tindakan ini tidak dapat dibatalkan.`))return;const result=await run(()=>api('/subjects/'+subject.id,{method:'DELETE'}));if(result){await loadAll();notify('Mata pelajaran berhasil dihapus.');}};
   const createTeacher=async teacher=>{setTeacherFormError('');setBusy(true);try{const result=await api('/teachers',{method:'POST',body:JSON.stringify(teacher)});setTeacherList(current=>[result,...current]);setModal('');notify('Akun staf dibuat. Username akses: '+result.username);}catch(err){setTeacherFormError(err.message||'Akun staf tidak dapat dibuat.');}finally{setBusy(false);}};
   const updateTeacherAccess=async changes=>{setTeacherFormError('');setBusy(true);try{const result=await api('/teachers/'+changes.id+'/access',{method:'PUT',body:JSON.stringify(changes)});setTeacherList(current=>current.map(teacher=>String(teacher.id)===String(result.id)?{...teacher,...result}:teacher));setTeacherToEdit(null);setModal('');notify('Akses staf diperbarui.');}catch(err){setTeacherFormError(err.message||'Akses staf tidak dapat diperbarui.');}finally{setBusy(false);}};
+  const createRoom=async room=>{const result=await api('/rooms',{method:'POST',body:JSON.stringify(room)});await loadAll();notify(`Ruang ${result.name}: ${result.totalAllocated} siswa terplotting.`);return result;};
+  const updateRoom=async room=>{const result=await api('/rooms/'+room.id,{method:'PUT',body:JSON.stringify(room)});await loadAll();notify(`Ruang ${result.name} diperbarui: ${result.totalAllocated} siswa terplotting.`);return result;};
+  const deleteRoom=async room=>{if(!window.confirm(`Hapus ${room.name}? Siswa pada ruang ini akan menjadi belum terplotting.`))return;try{await api('/rooms/'+room.id,{method:'DELETE'});await loadAll();notify('Ruang ujian dihapus.');}catch(err){notify(err.message);}};
   const deleteTeacher=async teacher=>{if(!window.confirm(`Hapus akun guru ${teacher.name} (${teacher.username})? Akses login akan dicabut. Data soal, ujian, jawaban, dan nilai tetap disimpan. Tindakan ini tidak dapat dibatalkan.`))return;const result=await run(()=>api(`/teachers/${teacher.id}`,{method:'DELETE'}));if(result){setTeacherList(current=>current.filter(item=>String(item.id)!==String(teacher.id)));notify('Akun guru dihapus dan seluruh sesi login dicabut.');}};
   const saveSubject=async subject=>{const result=await run(()=>api('/subjects',{method:'POST',body:JSON.stringify(subject)}));if(result){await loadAll();setBankForm(form=>({...form,subjectId:String(result.id)}));setSubjectToEdit(null);setModal(subjectReturnModal);notify('Mata pelajaran ditambahkan.');}};
   const openQuestions=async bank=>{setSelectedBank(bank);const result=await run(()=>api('/banks/'+bank.id+'/questions'));if(result){setQuestions(result);setModal('questions');}};
@@ -97,7 +102,7 @@ export default function App(){
   const deleteQuestionMedia=async(mediaId)=>{if(!window.confirm('Hapus gambar pendukung soal ini?'))return;const result=await run(()=>api('/question-media/'+mediaId,{method:'DELETE'}));if(result){await refreshQuestions();notify('Gambar soal dihapus.');}};
   const deleteQuestion=async question=>{if(!window.confirm(`Hapus soal ini dari bank "${selectedBank?.topic}"? Tindakan ini tidak dapat dibatalkan.`))return;const result=await run(()=>api('/questions/'+question.id,{method:'DELETE'}));if(result){await refreshQuestions();await loadAll();notify('Soal dihapus dari bank.');}};
   const addQuestion=async()=>{setQuestionFormError('');if(questionForm.imageFile&&Number(selectedBank?.examCount)>0){setQuestionFormError('Gambar soal harus disiapkan sebelum bank dijadwalkan.');return;}if(!questionForm.prompt.trim()){setQuestionFormError('Pertanyaan wajib diisi.');return;}if(questionForm.imageFile&&(!validQuestionImage(questionForm.imageFile)||!questionForm.imageAltText.trim())){setQuestionFormError('Gambar harus JPG, PNG, atau WebP maksimal 3 MB dan deskripsinya wajib diisi.');return;}if(questionForm.type==='mc'&&(questionForm.options.some(option=>!option.trim())||!['A','B','C','D'].includes(questionForm.answerKey)||!questionForm.options['ABCD'.indexOf(questionForm.answerKey)]?.trim())){setQuestionFormError('Lengkapi opsi A–D dan pilih kunci jawaban yang terisi.');return;}if(questionForm.type==='complex_mc'){const keys=questionForm.answerKey?questionForm.answerKey.split(',').map(s=>s.trim()).filter(Boolean):[];if(questionForm.options.some(option=>!option.trim())||keys.length<1||keys.some(k=>!['A','B','C','D'].includes(k)||!questionForm.options['ABCD'.indexOf(k)]?.trim())){setQuestionFormError('Lengkapi opsi A–D dan pilih minimal satu kunci jawaban yang terisi.');return;}}if(questionForm.type==='essay'&&!questionForm.answerKey.trim()){setQuestionFormError('Rubrik atau panduan koreksi wajib diisi.');return;}if(!Number.isFinite(Number(questionForm.points))||Number(questionForm.points)<=0){setQuestionFormError('Bobot harus lebih besar dari 0.');return;}const {imageFile,imageAltText,...payload}=questionForm;const result=await run(()=>api('/banks/'+selectedBank.id+'/questions',{method:'POST',body:JSON.stringify(payload)}));if(result){let mediaError='';if(imageFile){try{await sendQuestionImage(result.id,imageFile,imageAltText);}catch(error){mediaError=error.message;}}await refreshQuestions();setQuestionForm({type:'mc',prompt:'',options:['','','',''],answerKey:'',points:1,imageFile:null,imageAltText:''});setModal('questions');notify(mediaError?'Soal tersimpan, tetapi gambar gagal diunggah: '+mediaError:'Butir soal tersimpan.');}};
-  const createExam=async()=>{const payload={...examForm,bankId:examForm.bankIds?.[0]||examForm.bankId,className:(examForm.classNames||[]).join(', ')||examForm.className};const r=await run(()=>api('/exams',{method:'POST',body:JSON.stringify(payload)}));if(r){setModal('');await loadAll();notify(`Rancangan ujian dibuat untuk ${r.participants} siswa. Soal telah diacak per peserta.`);}};
+  const createExam=async()=>{if(!examForm.subjectIds?.length||!examForm.roomIds?.length){notify('Pilih minimal satu mata pelajaran dan satu ruang ujian.');return;}const payload={title:examForm.title,subjectIds:examForm.subjectIds,roomIds:examForm.roomIds,mcCount:examForm.mcCount,essayCount:examForm.essayCount,durationMinutes:examForm.durationMinutes};const r=await run(()=>api('/exams',{method:'POST',body:JSON.stringify(payload)}));if(r){setModal('');await loadAll();notify(`Rancangan ujian dibuat untuk ${r.participants} siswa di ${r.rooms} ruang. Soal telah diacak per peserta.`);}};
   const setExamStatus=async(exam,status)=>{const r=await run(()=>api(`/exams/${exam.id}/status`,{method:'PATCH',body:JSON.stringify({status})}));if(r){await loadAll();notify(`Status ujian: ${status}`);}};
   const openMonitor=async exam=>{setSelectedExam(exam);setReleasedPin('');const m=await run(()=>api(`/exams/${exam.id}/monitor`));if(m){setMonitor(m.students);setPinInfo(m.pin);setModal('monitor');}};
   const refreshMonitor=async()=>{if(!selectedExam)return;try{const m=await api(`/exams/${selectedExam.id}/monitor`);setMonitor(m.students);setPinInfo(m.pin);}catch(err){setError(err.message);}};
@@ -153,6 +158,7 @@ export default function App(){
             .filter(
               ([name]) =>
                 (name === "Ujian" || name === "Pantau Ujian" || !isPengawas) &&
+                (name !== "Ruang Ujian" || isAdmin) &&
                 (name !== "Siswa" || isAdmin) &&
                 (name !== "Pantau Ujian" || canManageExamMonitoring),
             )
@@ -335,6 +341,17 @@ export default function App(){
               onImport={() => { setModal("teacher-import"); }}
               onEdit={(teacher) => { setTeacherToEdit(teacher); setTeacherFormError(""); setModal("teacher-access"); }}
               onDelete={deleteTeacher}
+            />
+          )}
+          {page === "Ruang Ujian" && isAdmin && (
+            <ExamRoomsPage
+              rooms={rooms}
+              unassigned={roomUnassigned}
+              classes={schoolSettings.classes}
+              busy={busy}
+              onCreate={createRoom}
+              onUpdate={updateRoom}
+              onDelete={deleteRoom}
             />
           )}
           {page === "Mata Pelajaran" && (
@@ -551,6 +568,7 @@ export default function App(){
               classes={schoolSettings.classes}
               subjects={subjects}
               exams={exams}
+              rooms={rooms}
               tenancyEnabled={tenantLoginEnabled}
               busy={busy}
               error={teacherFormError}
@@ -600,6 +618,7 @@ export default function App(){
               classes={schoolSettings.classes}
               subjects={subjects}
               exams={exams}
+              rooms={rooms}
               busy={busy}
               error={teacherFormError}
               onSave={updateTeacherAccess}
@@ -826,57 +845,45 @@ export default function App(){
                 />
               </div>
               <div className="exam-section">
-                <div className="section-label"><Database size={14} />Bank soal (kombinasi beberapa bank)</div>
-                <div className="bank-scroll-wrapper">
-                  <div className="exam-bank-list">
-                    {banks.map((b) => {
-                      const isChecked = examForm.bankIds?.includes(b.id);
-                      const initial = (b.subject?.charAt(0) || '?').toUpperCase();
-                      const badgeMap = { S: 'bg-emerald-50 text-emerald-600', H: 'bg-amber-50 text-amber-600', A: 'bg-indigo-50 text-indigo-600' };
-                      const badgeClass = badgeMap[initial] || 'bg-slate-50 text-slate-600';
-                      return (
-                        <label key={b.id} className={`exam-bank-card${isChecked ? ' selected' : ''}`}>
-                          <input type="checkbox" checked={isChecked} onChange={(e) => {
-                            const cur = examForm.bankIds || [];
-                            const updated = e.target.checked ? [...cur, b.id] : cur.filter(id => id !== b.id);
-                            setExamForm({ ...examForm, bankIds: updated, bankId: updated[0] || '' });
-                          }} />
-                          <div className={`bank-avatar ${badgeClass}`}>{initial}</div>
-                          <div className="bank-info">
-                            <div className="bank-title">{b.subject}</div>
-                            <div className="bank-subtitle">Kelas {b.grade} · {b.topic}</div>
-                          </div>
-                          <div className="bank-row">
-                            <span className="bank-meta">{b.count} soal tersedia</span>
-                            <span className="bank-count">{b.count}</span>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
+                <div className="section-label"><BookMarked size={14} />Mata pelajaran (bisa lebih dari satu)</div>
+                <div className="exam-classes-grid">
+                  {subjects.map(subject => {
+                    const isChecked = examForm.subjectIds?.includes(subject.id);
+                    return (
+                      <label key={subject.id} className={`exam-check-item${isChecked ? ' selected' : ''}`}>
+                        <input type="checkbox" checked={isChecked} onChange={() => {
+                          const current = examForm.subjectIds || [];
+                          const updated = isChecked ? current.filter(id => id !== subject.id) : [...current, subject.id];
+                          setExamForm({ ...examForm, subjectIds: updated });
+                        }} />
+                        <div className="class-badge"><BookMarked size={14} /></div>
+                        <span className="class-name">{subject.name}</span>
+                        {isChecked && <span className="class-check">✓</span>}
+                      </label>
+                    );
+                  })}
                 </div>
+                {!subjects.length && <div className="form-note">Belum ada mata pelajaran. Tambahkan di menu Mata Pelajaran.</div>}
               </div>
               <div className="exam-section">
-                <div className="section-label"><CalendarDays size={14} />Kelas peserta (kombinasi beberapa kelas)</div>
-                <div className="exam-class-select">
-                  <div className="exam-classes-grid">
-                    {schoolSettings.classes.map((cls) => {
-                      const isChecked = examForm.classNames?.includes(cls);
-                      return (
-                        <label key={cls} className={`exam-check-item${isChecked ? ' selected' : ''}`}>
-                          <input type="checkbox" checked={isChecked} onChange={(e) => {
-                            const cur = examForm.classNames || [];
-                            const updated = e.target.checked ? [...cur, cls] : cur.filter(c => c !== cls);
-                            setExamForm({ ...examForm, classNames: updated, className: updated[0] || '' });
-                          }} />
-                          <div className="class-badge"><GraduationCap size={14} /></div>
-                          <span className="class-name">{cls}</span>
-                          {isChecked && <span className="class-check">✓</span>}
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
+                <div className="section-label"><DoorOpen size={14} />Ruang ujian peserta</div>
+                {rooms.length ? <div className="exam-classes-grid">
+                  {rooms.map(room => {
+                    const isChecked = examForm.roomIds?.includes(room.id);
+                    return (
+                      <label key={room.id} className={`exam-check-item${isChecked ? ' selected' : ''}`}>
+                        <input type="checkbox" checked={isChecked} onChange={() => {
+                          const current = examForm.roomIds || [];
+                          const updated = isChecked ? current.filter(id => id !== room.id) : [...current, room.id];
+                          setExamForm({ ...examForm, roomIds: updated });
+                        }} />
+                        <div className="class-badge"><DoorOpen size={14} /></div>
+                        <span className="class-name">{room.name} · {room.studentCount} siswa</span>
+                        {isChecked && <span className="class-check">✓</span>}
+                      </label>
+                    );
+                  })}
+                </div> : <div className="form-note">Belum ada ruang ujian. Buat plotting di menu Ruang Ujian terlebih dahulu.</div>}
               </div>
               <div className="exam-section exam-section-divider">
                 <div className="section-label"><BarChart3 size={14} />Jumlah soal &amp; durasi</div>
@@ -1151,7 +1158,12 @@ function StudentsPage({
   );
 }
 function proctorRooms(teacher) {
+  const rooms = (teacher.rooms || []).map(room => room.name).filter(Boolean);
+  if (rooms.length) return rooms;
   return [...new Set((teacher.exams || []).flatMap(exam => String(exam.className || '').split(',').map(item => item.trim()).filter(Boolean)))];
+}
+function proctorScopeLabels(teacher) {
+  return [...(teacher.rooms || []).map(room => room.name), ...(teacher.exams || []).map(exam => exam.title)].filter(Boolean);
 }
 function TeacherAccountsPage({ teachers, subjects, quota, onAdd, onImport, onEdit, onDelete }) {
   const [search, setSearch] = useState("");
@@ -1201,7 +1213,7 @@ function TeacherAccountsPage({ teachers, subjects, quota, onAdd, onImport, onEdi
               ? (proctorRooms(teacher).join(', ') || 'Belum ditetapkan')
               : (teacher.classes.length ? teacher.classes.join(', ') : 'Belum ditetapkan')}</span>
             <span>{teacher.role === 'pengawas'
-              ? ((teacher.exams || []).map(exam => exam.title).join(', ') || 'Belum ditetapkan')
+              ? (proctorScopeLabels(teacher).join(', ') || 'Belum ditetapkan')
               : (teacher.subjectIds.length ? teacher.subjectIds.map(id => subjects.find(subject => Number(subject.id) === Number(id))?.name || id).join(', ') : 'Belum ditetapkan')}</span>
             <span className="teacher-account-actions">
               <button className="secondary" onClick={() => onEdit(teacher)}>Atur akses</button>
@@ -1411,7 +1423,7 @@ function BanksPage({
   );
 }
 function ExamsPage({exams,isAdmin,canRunExam=false,busy,onCreate,onStatus,onMonitor,onDelete}) {
-  return <><PageTitle eyebrow="PENJADWALAN & DISTRIBUSI" title="Ujian" desc="Susun sesi dari bank spesifik; server menyimpan pembagian soal per peserta." actions={isAdmin?<button className="primary" onClick={onCreate}><Plus size={17}/> Buat ujian</button>:null}/><div className="exam-cards"><section className="panel exam-list-card"><div className="panel-head"><div><h2>Rancangan ujian</h2><p>{exams.length} sesi tersimpan</p></div><RefreshCw size={16} color="#91a0ad"/></div>{exams.map(e=><div className="running-exam" key={e.id}><div className="exam-icon"><BookOpen size={20}/></div><div><div className={e.status==='active'?'live-label':'upcoming-label'}>{statusLabel(e.status)}</div><h3>{e.title} &middot; Kelas {e.className}</h3><p>{e.subject} &middot; {e.mcCount} PG + {e.essayCount} essay &middot; {e.durationMinutes} menit &middot; {e.participants} siswa</p></div><div className="exam-actions"><button className="row-action" title="Pantau peserta" aria-label={`Pantau ${e.title}`} onClick={()=>onMonitor(e)}><Eye size={16}/></button>{canRunExam&&e.status!=='active'&&e.status!=='completed'&&<button className="row-action" title="Jalankan ujian" aria-label={`Jalankan ${e.title}`} onClick={()=>onStatus(e,'active')}><Play size={15}/></button>}{isAdmin&&e.status==='active'&&<button className="row-action" title="Akhiri ujian" aria-label={`Akhiri ${e.title}`} onClick={()=>onStatus(e,'completed')}><Pause size={15}/></button>}{isAdmin&&<button className="row-action delete-action" disabled={busy||e.status==='active'} title={e.status==='active'?'Akhiri ujian sebelum menghapus':e.in_progress>0?'Selesaikan sesi peserta sebelum menghapus':'Hapus ujian simulasi'} aria-label={`Hapus ujian ${e.title}`} onClick={()=>onDelete(e)}><Trash2 size={15}/></button>}</div></div>)}{!exams.length&&<Empty message="Belum ada ujian" detail="Buat rancangan untuk mengacak soal bagi peserta."/>}</section><section className="panel rules-card"><div className="panel-head"><div><h2>Aturan pengacakan</h2><p>Ditegakkan di server</p></div><div className="shuffle-badge"><Shuffle size={18}/></div></div><ul><li><Check size={15}/> Bank soal dan kelas dipilih saat membuat sesi</li><li><Check size={15}/> Kuota PG dan essay divalidasi dengan stok</li><li><Check size={15}/> Soal PG & opsi diacak tiap peserta; soal essay tetap urut</li><li><Check size={15}/> Kunci jawaban tidak dikirim pada API bank</li></ul><div className="rule-note"><CircleAlert size={16}/><span>Pengaktifan sesi belum membuka halaman ujian siswa. Itu masuk Phase 2.</span></div></section></div></>;
+  return <><PageTitle eyebrow="PENJADWALAN & DISTRIBUSI" title="Ujian" desc="Susun sesi dari bank spesifik; server menyimpan pembagian soal per peserta." actions={isAdmin?<button className="primary" onClick={onCreate}><Plus size={17}/> Buat ujian</button>:null}/><div className="exam-cards"><section className="panel exam-list-card"><div className="panel-head"><div><h2>Rancangan ujian</h2><p>{exams.length} sesi tersimpan</p></div><RefreshCw size={16} color="#91a0ad"/></div>{exams.map(e=><div className="running-exam" key={e.id}><div className="exam-icon"><BookOpen size={20}/></div><div><div className={e.status==='active'?'live-label':'upcoming-label'}>{statusLabel(e.status)}</div><h3>{e.title} &middot; {(e.rooms?.length?e.rooms.map(room=>room.name).join(', '):'Kelas '+e.className)}</h3><p>{(e.subjects?.length?e.subjects.map(subject=>subject.name).join(', '):e.subject)} &middot; {e.mcCount} PG + {e.essayCount} essay &middot; {e.durationMinutes} menit &middot; {e.participants} siswa</p></div><div className="exam-actions"><button className="row-action" title="Pantau peserta" aria-label={`Pantau ${e.title}`} onClick={()=>onMonitor(e)}><Eye size={16}/></button>{canRunExam&&e.status!=='active'&&e.status!=='completed'&&<button className="row-action" title="Jalankan ujian" aria-label={`Jalankan ${e.title}`} onClick={()=>onStatus(e,'active')}><Play size={15}/></button>}{isAdmin&&e.status==='active'&&<button className="row-action" title="Akhiri ujian" aria-label={`Akhiri ${e.title}`} onClick={()=>onStatus(e,'completed')}><Pause size={15}/></button>}{isAdmin&&<button className="row-action delete-action" disabled={busy||e.status==='active'} title={e.status==='active'?'Akhiri ujian sebelum menghapus':e.in_progress>0?'Selesaikan sesi peserta sebelum menghapus':'Hapus ujian simulasi'} aria-label={`Hapus ujian ${e.title}`} onClick={()=>onDelete(e)}><Trash2 size={15}/></button>}</div></div>)}{!exams.length&&<Empty message="Belum ada ujian" detail="Buat rancangan untuk mengacak soal bagi peserta."/>}</section><section className="panel rules-card"><div className="panel-head"><div><h2>Aturan pengacakan</h2><p>Ditegakkan di server</p></div><div className="shuffle-badge"><Shuffle size={18}/></div></div><ul><li><Check size={15}/> Bank soal dan kelas dipilih saat membuat sesi</li><li><Check size={15}/> Kuota PG dan essay divalidasi dengan stok</li><li><Check size={15}/> Soal PG & opsi diacak tiap peserta; soal essay tetap urut</li><li><Check size={15}/> Kunci jawaban tidak dikirim pada API bank</li></ul><div className="rule-note"><CircleAlert size={16}/><span>Pengaktifan sesi belum membuka halaman ujian siswa. Itu masuk Phase 2.</span></div></section></div></>;
 }
 function ResultsPage({results,onReview,onSaveFinalScore,busy}){
   const flagged=results.filter(result=>result.status==='locked'||Number(result.violationCount)>0||Number(result.pendingViolationCount)>0);

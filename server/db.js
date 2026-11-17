@@ -3,6 +3,17 @@ import { readFile } from 'node:fs/promises';
 import { createTenantAwarePool } from './tenantDatabaseContext.js';
 const { Pool } = pg;
 
+export const DATABASE_MIGRATIONS = [
+  { version: 1, name: 'subject-presentation-and-question-media', file: './migrations/001_subject-presentation-and-question-media.sql' },
+  { version: 2, name: 'platform-owner-role', file: './migrations/002_platform-owner-role.sql' },
+  { version: 3, name: 'question-stimuli', file: './migrations/003_question-stimuli.sql' },
+  { version: 4, name: 'complex-mc', file: './migrations/004_complex_mc.sql' },
+  { version: 5, name: 'pengawas-role', file: './migrations/005_pengawas-role.sql' },
+  { version: 6, name: 'exam-proctors', file: './migrations/006_exam-proctors.sql' },
+  { version: 7, name: 'exam-rooms', file: './migrations/007_exam-rooms.sql' },
+];
+export const LATEST_DATABASE_MIGRATION_VERSION = DATABASE_MIGRATIONS.at(-1).version;
+
 function boundedInteger(env, name, fallback, minimum, maximum) {
   const rawValue = env[name];
   if (rawValue === undefined || rawValue.trim() === '') return fallback;
@@ -101,9 +112,40 @@ export async function initializeDatabase(targetPool = pool) {
         PRIMARY KEY(exam_id,proctor_id)
       );
       CREATE INDEX IF NOT EXISTS idx_exam_proctors_proctor ON exam_proctors(proctor_id);
+      CREATE TABLE IF NOT EXISTS exam_rooms (
+        id BIGSERIAL PRIMARY KEY, name TEXT UNIQUE NOT NULL,
+        quotas JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_by BIGINT REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS exam_room_students (
+        room_id BIGINT NOT NULL REFERENCES exam_rooms(id) ON DELETE CASCADE,
+        student_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        class_name TEXT NOT NULL,
+        PRIMARY KEY(room_id,student_id), UNIQUE(student_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_exam_room_students_room ON exam_room_students(room_id);
+      CREATE TABLE IF NOT EXISTS exam_room_proctors (
+        room_id BIGINT NOT NULL REFERENCES exam_rooms(id) ON DELETE CASCADE,
+        proctor_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        PRIMARY KEY(room_id,proctor_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_exam_room_proctors_proctor ON exam_room_proctors(proctor_id);
+      CREATE TABLE IF NOT EXISTS exam_room_links (
+        exam_id BIGINT NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+        room_id BIGINT NOT NULL REFERENCES exam_rooms(id) ON DELETE CASCADE,
+        PRIMARY KEY(exam_id,room_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_exam_room_links_room ON exam_room_links(room_id);
+      CREATE TABLE IF NOT EXISTS exam_subjects (
+        exam_id BIGINT NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+        subject_id BIGINT NOT NULL REFERENCES subjects(id) ON DELETE RESTRICT,
+        position INTEGER NOT NULL,
+        PRIMARY KEY(exam_id,subject_id)
+      );
       CREATE TABLE IF NOT EXISTS exam_sessions (
         id BIGSERIAL PRIMARY KEY, exam_id BIGINT NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
         student_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        room_id BIGINT REFERENCES exam_rooms(id) ON DELETE SET NULL,
         status TEXT NOT NULL DEFAULT 'not_started' CHECK(status IN ('not_started','in_progress','completed','locked')),
         violation_count INTEGER NOT NULL DEFAULT 0, score NUMERIC(7,2), max_score NUMERIC(7,2), final_score NUMERIC(5,2), started_at TIMESTAMPTZ, finished_at TIMESTAMPTZ,
         last_ping_at TIMESTAMPTZ,
@@ -112,6 +154,7 @@ export async function initializeDatabase(targetPool = pool) {
       ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS max_score NUMERIC(7,2);
       ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS final_score NUMERIC(5,2);
       ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS last_ping_at TIMESTAMPTZ;
+      ALTER TABLE exam_sessions ADD COLUMN IF NOT EXISTS room_id BIGINT REFERENCES exam_rooms(id) ON DELETE SET NULL;
       CREATE TABLE IF NOT EXISTS exam_questions (
         session_id BIGINT NOT NULL REFERENCES exam_sessions(id) ON DELETE CASCADE,
         question_id BIGINT NOT NULL REFERENCES questions(id) ON DELETE RESTRICT, position INTEGER NOT NULL,
@@ -152,6 +195,7 @@ export async function initializeDatabase(targetPool = pool) {
       CREATE INDEX IF NOT EXISTS idx_sessions_exam_status ON exam_sessions(exam_id,status);
       CREATE INDEX IF NOT EXISTS idx_violations_session_created ON violation_events(session_id,created_at);
       CREATE INDEX IF NOT EXISTS idx_exam_sessions_student_id ON exam_sessions(student_id);
+      CREATE INDEX IF NOT EXISTS idx_exam_sessions_room ON exam_sessions(room_id);
       CREATE INDEX IF NOT EXISTS idx_violations_session_pending ON violation_events(session_id) WHERE review_status = 'pending';
     `);
     await client.query(`
@@ -161,41 +205,12 @@ export async function initializeDatabase(targetPool = pool) {
         applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
-    const migration = await client.query('SELECT 1 FROM schema_migrations WHERE version=$1', [1]);
-    if (!migration.rowCount) {
-      const migrationSql = await readFile(new URL('./migrations/001_subject-presentation-and-question-media.sql', import.meta.url), 'utf8');
+    for (const migration of DATABASE_MIGRATIONS) {
+      const applied = await client.query('SELECT 1 FROM schema_migrations WHERE version=$1', [migration.version]);
+      if (applied.rowCount) continue;
+      const migrationSql = await readFile(new URL(migration.file, import.meta.url), 'utf8');
       await client.query(migrationSql);
-      await client.query('INSERT INTO schema_migrations(version,name) VALUES($1,$2)', [1, 'subject-presentation-and-question-media']);
-    }
-    const ownerRoleMigration = await client.query('SELECT 1 FROM schema_migrations WHERE version=$1', [2]);
-    if (!ownerRoleMigration.rowCount) {
-      const migrationSql = await readFile(new URL('./migrations/002_platform-owner-role.sql', import.meta.url), 'utf8');
-      await client.query(migrationSql);
-      await client.query('INSERT INTO schema_migrations(version,name) VALUES($1,$2)', [2, 'platform-owner-role']);
-    }
-    const stimuliMigration = await client.query('SELECT 1 FROM schema_migrations WHERE version=$1', [3]);
-    if (!stimuliMigration.rowCount) {
-      const migrationSql = await readFile(new URL('./migrations/003_question-stimuli.sql', import.meta.url), 'utf8');
-      await client.query(migrationSql);
-      await client.query('INSERT INTO schema_migrations(version,name) VALUES($1,$2)', [3, 'question-stimuli']);
-    }
-    const complexMcMigration = await client.query('SELECT 1 FROM schema_migrations WHERE version=$1', [4]);
-    if (!complexMcMigration.rowCount) {
-      const migrationSql = await readFile(new URL('./migrations/004_complex_mc.sql', import.meta.url), 'utf8');
-      await client.query(migrationSql);
-      await client.query('INSERT INTO schema_migrations(version,name) VALUES($1,$2)', [4, 'complex-mc']);
-    }
-    const pengawasRoleMigration = await client.query('SELECT 1 FROM schema_migrations WHERE version=$1', [5]);
-    if (!pengawasRoleMigration.rowCount) {
-      const migrationSql = await readFile(new URL('./migrations/005_pengawas-role.sql', import.meta.url), 'utf8');
-      await client.query(migrationSql);
-      await client.query('INSERT INTO schema_migrations(version,name) VALUES($1,$2)', [5, 'pengawas-role']);
-    }
-    const proctorAssignmentMigration = await client.query('SELECT 1 FROM schema_migrations WHERE version=$1', [6]);
-    if (!proctorAssignmentMigration.rowCount) {
-      const migrationSql = await readFile(new URL('./migrations/006_exam-proctors.sql', import.meta.url), 'utf8');
-      await client.query(migrationSql);
-      await client.query('INSERT INTO schema_migrations(version,name) VALUES($1,$2)', [6, 'exam-proctors']);
+      await client.query('INSERT INTO schema_migrations(version,name) VALUES($1,$2)', [migration.version, migration.name]);
     }
     await client.query('COMMIT');
   } catch (error) {
