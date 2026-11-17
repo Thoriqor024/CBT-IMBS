@@ -296,9 +296,20 @@ async function teacherCanAccessExam(userId,examId,client=pool) {
     WHERE e.id=$1 AND ta.teacher_id=$2) AS allowed`,[examId,userId]);
   return result.rows[0].allowed;
 }
+async function proctorCanAccessExam(userId,examId,client=pool) {
+  const result=await client.query('SELECT EXISTS(SELECT 1 FROM exam_proctors ep WHERE ep.proctor_id=$1 AND ep.exam_id=$2) AS allowed',[userId,examId]);
+  return result.rows[0].allowed;
+}
+async function proctorAssignedExams(userId,client=pool) {
+  return (await client.query(`SELECT e.id,e.title,e.class_name AS "className" FROM exam_proctors ep
+    JOIN exams e ON e.id=ep.exam_id WHERE ep.proctor_id=$1 ORDER BY e.created_at DESC,e.id DESC`,[userId])).rows;
+}
 const requireExamScope=asyncRoute(async(req,res,next)=>{
-  if(isExamOperator(req.session.user.role)&&req.session.user.role!=='teacher')return next();
-  if(!await teacherCanAccessExam(req.session.user.id,req.params.id))return res.status(404).json({error:'Ujian tidak ditemukan.'});
+  if(req.session.user.role==='admin')return next();
+  const allowed=req.session.user.role==='pengawas'
+    ? await proctorCanAccessExam(req.session.user.id,req.params.id)
+    : await teacherCanAccessExam(req.session.user.id,req.params.id);
+  if(!allowed)return res.status(404).json({error:'Ujian tidak ditemukan.'});
   next();
 });
 const requireResultScope=asyncRoute(async(req,res,next)=>{
@@ -1067,20 +1078,24 @@ app.post('/api/teachers',allow('admin'),asyncRoute(async(req,res)=>{
   const password=String(req.body?.password||'');
   const classNames=Array.isArray(req.body?.classes)?[...new Set(req.body.classes.map(value=>String(value).trim()).filter(Boolean))]:[];
   const subjectIds=Array.isArray(req.body?.subjectIds)?[...new Set(req.body.subjectIds.map(Number))]:[];
+  const examIds=Array.isArray(req.body?.examIds)?[...new Set(req.body.examIds.map(Number))]:[];
   if(!['teacher','pengawas'].includes(role))return res.status(400).json({error:'Role staf tidak valid.'});
   if(!name||name.length>120)return res.status(400).json({error:'Nama staf wajib diisi dan maksimal 120 karakter.'});
   if(!/^[a-z0-9._-]{3,40}$/.test(username))return res.status(400).json({error:'Username akses harus 3–40 karakter: huruf, angka, titik, garis bawah, atau tanda hubung.'});
   if(password.length<8||password.length>128)return res.status(400).json({error:'Password harus berisi 8–128 karakter.'});
   if(role==='teacher'&&(!classNames.length||!subjectIds.length||subjectIds.some(id=>!Number.isSafeInteger(id)||id<1)))return res.status(400).json({error:'Guru harus memiliki sedikitnya satu kelas dan satu mata pelajaran.'});
+  if(role==='pengawas'&&examIds.some(id=>!Number.isSafeInteger(id)||id<1))return res.status(400).json({error:'Sesi ujian pengawas tidak valid.'});
   const tenant=tenantRuntime?.context.getCurrent()?.tenant;
-  const [settings,subjects,existing,existingEmail]=await Promise.all([
+  const [settings,subjects,existing,existingEmail,assignedExams]=await Promise.all([
     pool.query('SELECT classes FROM school_settings WHERE id=1'),
     pool.query('SELECT id FROM subjects WHERE id=ANY($1::bigint[])',[subjectIds]),
     pool.query('SELECT 1 FROM users WHERE lower(username)=lower($1)',[username]),
     email?pool.query('SELECT 1 FROM users WHERE lower(email)=lower($1)',[email]):Promise.resolve({rowCount:0}),
+    role==='pengawas'&&examIds.length?pool.query('SELECT id FROM exams WHERE id=ANY($1::bigint[])',[examIds]):Promise.resolve({rowCount:0}),
   ]);
   if(role==='teacher'&&classNames.some(className=>!settings.rows[0].classes.includes(className)))return res.status(400).json({error:'Kelas guru harus dipilih dari Pengaturan sekolah.'});
   if(role==='teacher'&&subjects.rowCount!==subjectIds.length)return res.status(400).json({error:'Mata pelajaran guru tidak valid.'});
+  if(role==='pengawas'&&assignedExams.rowCount!==examIds.length)return res.status(400).json({error:'Sesi ujian pengawas tidak ditemukan.'});
   if(existing.rowCount)return res.status(409).json({error:'Username akses sudah digunakan.'});
   if(existingEmail.rowCount)return res.status(409).json({error:'Email sudah digunakan pada sekolah ini.'});
   const client=await pool.connect();
@@ -1093,9 +1108,11 @@ app.post('/api/teachers',allow('admin'),asyncRoute(async(req,res)=>{
       : await client.query('INSERT INTO users(username,full_name,role,password_hash,active) VALUES($1,$2,$3,$4,TRUE) RETURNING id,username,full_name AS name,role',[username,name,role,passwordHash]);
     for(const subjectId of subjectIds)for(const className of classNames)
       await client.query('INSERT INTO teacher_access(teacher_id,subject_id,class_name) VALUES($1,$2,$3)',[teacher.rows[0].id,subjectId,className]);
-    await audit(client,req.session.user.id,'staff.create',{staffId:teacher.rows[0].id,username,role,classNames,subjectIds});
+    if(role==='pengawas')for(const examId of examIds)
+      await client.query('INSERT INTO exam_proctors(exam_id,proctor_id) VALUES($1,$2)',[examId,teacher.rows[0].id]);
+    await audit(client,req.session.user.id,'staff.create',{staffId:teacher.rows[0].id,username,role,classNames,subjectIds,examIds});
     await client.query('COMMIT');
-    res.status(201).json({...teacher.rows[0],classes:classNames,subjectIds});
+    res.status(201).json({...teacher.rows[0],classes:classNames,subjectIds,exams:role==='pengawas'?await proctorAssignedExams(teacher.rows[0].id,client):[]});
   }catch(error){await client.query('ROLLBACK');if(error.code==='23505')throw Object.assign(new Error('Username atau email sudah digunakan pada sekolah ini.'),{status:409});throw error;}finally{client.release();}
 }));
 app.post('/api/teachers/import',allow('admin'),asyncRoute(async(req,res)=>{
@@ -1150,7 +1167,8 @@ app.post('/api/teachers/import',allow('admin'),asyncRoute(async(req,res)=>{
 app.get('/api/teachers',allow('admin'),asyncRoute(async(_req,res)=>{
   const teachers=await pool.query(`SELECT u.id,u.username,${tenantRuntime?'u.email,':''}u.full_name AS name,u.role,u.active,
     COALESCE(array_agg(DISTINCT ta.class_name) FILTER(WHERE ta.class_name IS NOT NULL),ARRAY[]::text[]) AS classes,
-    COALESCE(array_agg(DISTINCT ta.subject_id) FILTER(WHERE ta.subject_id IS NOT NULL),ARRAY[]::bigint[]) AS "subjectIds"
+    COALESCE(array_agg(DISTINCT ta.subject_id) FILTER(WHERE ta.subject_id IS NOT NULL),ARRAY[]::bigint[]) AS "subjectIds",
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'title',e.title,'className',e.class_name) ORDER BY e.created_at DESC,e.id DESC) FROM exam_proctors ep JOIN exams e ON e.id=ep.exam_id WHERE ep.proctor_id=u.id),'[]'::jsonb) AS exams
     FROM users u LEFT JOIN teacher_access ta ON ta.teacher_id=u.id WHERE u.role IN ('teacher','pengawas')
     GROUP BY u.id ORDER BY u.full_name`);
   res.json(teachers.rows);
@@ -1180,14 +1198,18 @@ app.put('/api/teachers/:id/access',allow('admin'),asyncRoute(async(req,res)=>{
   const role=String(req.body?.role||'teacher').trim().toLowerCase();
   const classNames=Array.isArray(req.body?.classes)?[...new Set(req.body.classes.map(value=>String(value).trim()).filter(Boolean))]:[];
   const subjectIds=Array.isArray(req.body?.subjectIds)?[...new Set(req.body.subjectIds.map(Number))]:[];
+  const examIds=Array.isArray(req.body?.examIds)?[...new Set(req.body.examIds.map(Number))]:[];
   if(!['teacher','pengawas'].includes(role))return res.status(400).json({error:'Role staf tidak valid.'});
   if(role==='teacher'&&(!classNames.length||!subjectIds.length||subjectIds.some(id=>!Number.isSafeInteger(id)||id<1)))return res.status(400).json({error:'Guru harus memiliki sedikitnya satu kelas dan satu mata pelajaran.'});
-  const [settings,subjects]=await Promise.all([
+  if(role==='pengawas'&&examIds.some(id=>!Number.isSafeInteger(id)||id<1))return res.status(400).json({error:'Sesi ujian pengawas tidak valid.'});
+  const [settings,subjects,assignedExams]=await Promise.all([
     pool.query('SELECT classes FROM school_settings WHERE id=1'),
     pool.query('SELECT id FROM subjects WHERE id=ANY($1::bigint[])',[subjectIds]),
+    role==='pengawas'&&examIds.length?pool.query('SELECT id FROM exams WHERE id=ANY($1::bigint[])',[examIds]):Promise.resolve({rowCount:0}),
   ]);
   if(role==='teacher'&&classNames.some(className=>!settings.rows[0].classes.includes(className)))return res.status(400).json({error:'Kelas guru harus dipilih dari Pengaturan sekolah.'});
   if(role==='teacher'&&subjects.rowCount!==subjectIds.length)return res.status(400).json({error:'Mata pelajaran guru tidak valid.'});
+  if(role==='pengawas'&&assignedExams.rowCount!==examIds.length)return res.status(400).json({error:'Sesi ujian pengawas tidak ditemukan.'});
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
@@ -1195,12 +1217,16 @@ app.put('/api/teachers/:id/access',allow('admin'),asyncRoute(async(req,res)=>{
     if(!teacher.rowCount)throw Object.assign(new Error('Akun staf tidak ditemukan.'),{status:404});
     await client.query('UPDATE users SET role=$2 WHERE id=$1',[req.params.id,role]);
     const previous=await teacherAssignments(req.params.id,client);
+    const previousExams=await proctorAssignedExams(req.params.id,client);
     await client.query('DELETE FROM teacher_access WHERE teacher_id=$1',[req.params.id]);
+    await client.query('DELETE FROM exam_proctors WHERE proctor_id=$1',[req.params.id]);
     for(const subjectId of subjectIds)for(const className of classNames)
       await client.query('INSERT INTO teacher_access(teacher_id,subject_id,class_name) VALUES($1,$2,$3)',[req.params.id,subjectId,className]);
-    await audit(client,req.session.user.id,'staff.update',{staffId:Number(req.params.id),previousRole:teacher.rows[0].role,role,previous,next:{classNames,subjectIds}});
+    if(role==='pengawas')for(const examId of examIds)
+      await client.query('INSERT INTO exam_proctors(exam_id,proctor_id) VALUES($1,$2)',[examId,req.params.id]);
+    await audit(client,req.session.user.id,'staff.update',{staffId:Number(req.params.id),previousRole:teacher.rows[0].role,role,previous,previousExams,next:{classNames,subjectIds,examIds}});
     await client.query('COMMIT');
-    res.json({id:Number(req.params.id),role,classes:classNames,subjectIds});
+    res.json({id:Number(req.params.id),role,classes:classNames,subjectIds,exams:role==='pengawas'?await proctorAssignedExams(req.params.id):[]});
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }));
 app.get('/api/banks',allow('admin','teacher'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT b.id,b.grade,b.topic,s.id AS subject_id,s.name AS subject,s.language_code AS "languageCode",s.text_direction AS "textDirection",count(q.id)::int AS count,count(q.id) FILTER(WHERE q.type IN ('mc', 'complex_mc'))::int AS mc,count(q.id) FILTER(WHERE q.type='essay')::int AS essay,(SELECT count(*)::int FROM exams e WHERE e.bank_id=b.id) AS "examCount",(SELECT count(*)::int FROM exam_sessions es JOIN exams e ON e.id=es.exam_id WHERE e.bank_id=b.id) AS "sessionCount" FROM question_banks b JOIN subjects s ON s.id=b.subject_id LEFT JOIN questions q ON q.bank_id=b.id WHERE ($1='admin' OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-')))) GROUP BY b.id,s.id ORDER BY b.created_at DESC`,[req.session.user.role,req.session.user.id]);res.json(q.rows);}));
@@ -1608,7 +1634,7 @@ app.get('/api/stimuli/:id/media', auth, asyncRoute(async (req, res) => {
 }));
 
 app.post('/api/exams',allow('admin'),asyncRoute(async(req,res)=>{const {title,bankId,className,bankIds,classNames,mcCount,essayCount,durationMinutes}=req.body||{};const effectiveBankIds=Array.isArray(bankIds)&&bankIds.length?bankIds.map(Number):bankId?[Number(bankId)]:[];const effectiveClassNames=Array.isArray(classNames)&&classNames.length?classNames.map(String).map(s=>s.trim()).filter(Boolean):className?String(className).split(',').map(s=>s.trim()).filter(Boolean):[];const mc=Number(mcCount),essay=Number(essayCount),duration=Number(durationMinutes);if(!String(title||'').trim()||!effectiveBankIds.length||!effectiveClassNames.length||!Number.isInteger(mc)||!Number.isInteger(essay)||mc<0||essay<0||mc+essay<1||!Number.isInteger(duration)||duration<1)return res.status(400).json({error:'Lengkapi judul, bank soal, kelas peserta, jumlah soal, dan durasi.'});const client=await pool.connect();try{await client.query('BEGIN');const bankLock=await client.query('SELECT id,subject_id,grade,topic FROM question_banks WHERE id = ANY($1) FOR UPDATE',[effectiveBankIds]);if(bankLock.rows.length!==effectiveBankIds.length)throw Object.assign(new Error('Salah satu bank soal tidak ditemukan.'),{status:404});const bankGrades=[...new Set(bankLock.rows.map(b=>b.grade))];const escapeReg=(s)=>s.split('').map(c=>'[-/\\^$*+?.()|[]{}'.includes(c)?('\\'+c):c).join('');const matchGrade=(cls)=>{const sorted=[...bankGrades].sort((a,b)=>b.length-a.length);const norm=String(cls).trim();const stripped=norm.replace(/^(kelas|kls|class)\s*[-:]?\s*/i,'');const prefixMatch=sorted.find(g=>stripped===g||stripped.startsWith(g+' ')||stripped.startsWith(g+'-'));if(prefixMatch)return prefixMatch;return sorted.find(g=>new RegExp('(^|[^a-zA-Z0-9])'+escapeReg(g)+'([^a-zA-Z0-9]|$)','i').test(norm))||null;};for(const c of effectiveClassNames){const g=matchGrade(c);if(!g)throw Object.assign(new Error(`Kelas "${c}" tidak memiliki bank soal dengan tingkatan yang sesuai pada bank yang dipilih.`),{status:400});}for(const g of bankGrades){const gBankIds=bankLock.rows.filter(b=>b.grade===g).map(b=>b.id);const stock=await client.query("SELECT type,count(*)::int AS n FROM questions WHERE bank_id = ANY($1) GROUP BY type",[gBankIds]);const counts=Object.fromEntries(stock.rows.map(x=>[x.type,x.n]));const totalAvailableMC=(counts.mc||0)+(counts.complex_mc||0);if(mc>totalAvailableMC||essay>(counts.essay||0)){throw Object.assign(new Error(`Stok soal tingkat ${g} tidak cukup. Tersedia ${totalAvailableMC} pilihan ganda dan ${counts.essay||0} essay.`),{status:400});}}const primaryBankId=bankLock.rows[0].id;const displayClassName=effectiveClassNames.join(', ');const exam=await client.query("INSERT INTO exams(title,bank_id,class_name,mc_count,essay_count,duration_minutes,created_by) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id",[String(title).trim(),primaryBankId,displayClassName,mc,essay,duration,req.session.user.id]);const students=await client.query("SELECT id,class_name FROM users WHERE role='student' AND class_name = ANY($1) AND active=TRUE ORDER BY id",[effectiveClassNames]);for(const student of students.rows){const studentGrade=matchGrade(student.class_name);const targetBankIds=bankLock.rows.filter(b=>b.grade===studentGrade).map(b=>b.id);const sessionRow=await client.query('INSERT INTO exam_sessions(exam_id,student_id) VALUES($1,$2) RETURNING id',[exam.rows[0].id,student.id]);const picks=await pickExamQuestions(client,targetBankIds,mc,essay);for(let i=0;i<picks.length;i++)await client.query('INSERT INTO exam_questions(session_id,question_id,position) VALUES($1,$2,$3)',[sessionRow.rows[0].id,picks[i].id,i+1]);}await client.query('COMMIT');await audit(pool,req.session.user.id,'exam.create',{examId:exam.rows[0].id,participants:students.rowCount,banks:effectiveBankIds.length,classes:effectiveClassNames.length});res.status(201).json({id:exam.rows[0].id,participants:students.rowCount});}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}}));
-app.get('/api/exams',allow('admin','teacher','pengawas'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT e.id,e.title,e.class_name AS "className",e.duration_minutes AS "durationMinutes",e.status,e.created_at AS "createdAt",s.name AS subject,b.grade,b.topic,e.mc_count AS "mcCount",e.essay_count AS "essayCount",count(es.id)::int AS participants,count(es.id) FILTER(WHERE es.status='in_progress')::int AS in_progress,count(es.id) FILTER(WHERE es.status='completed')::int AS completed,count(es.id) FILTER(WHERE es.status='locked')::int AS locked,count(es.id) FILTER(WHERE es.violation_count>0)::int AS violations FROM exams e JOIN question_banks b ON b.id=e.bank_id JOIN subjects s ON s.id=b.subject_id LEFT JOIN exam_sessions es ON es.exam_id=e.id WHERE ($1 IN ('admin','pengawas') OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*'))))) GROUP BY e.id,s.name,b.grade,b.topic ORDER BY e.created_at DESC`,[req.session.user.role,req.session.user.id]);res.json(q.rows);}));
+app.get('/api/exams',allow('admin','teacher','pengawas'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT e.id,e.title,e.class_name AS "className",e.duration_minutes AS "durationMinutes",e.status,e.created_at AS "createdAt",s.name AS subject,b.grade,b.topic,e.mc_count AS "mcCount",e.essay_count AS "essayCount",count(es.id)::int AS participants,count(es.id) FILTER(WHERE es.status='in_progress')::int AS in_progress,count(es.id) FILTER(WHERE es.status='completed')::int AS completed,count(es.id) FILTER(WHERE es.status='locked')::int AS locked,count(es.id) FILTER(WHERE es.violation_count>0)::int AS violations FROM exams e JOIN question_banks b ON b.id=e.bank_id JOIN subjects s ON s.id=b.subject_id LEFT JOIN exam_sessions es ON es.exam_id=e.id WHERE ($1='admin' OR ($1='pengawas' AND EXISTS(SELECT 1 FROM exam_proctors ep WHERE ep.exam_id=e.id AND ep.proctor_id=$2)) OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*'))))) GROUP BY e.id,s.name,b.grade,b.topic ORDER BY e.created_at DESC`,[req.session.user.role,req.session.user.id]);res.json(q.rows);}));
 app.delete('/api/exams/:id',allow('admin'),asyncRoute(async(req,res)=>{
   const client=await pool.connect();
   try{
@@ -1628,7 +1654,7 @@ app.delete('/api/exams/:id',allow('admin'),asyncRoute(async(req,res)=>{
     res.json({ok:true,deleted:{sessions:deleted.sessions,responses:deleted.responses,violations:deleted.violations}});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }));
-app.patch('/api/exams/:id/status',allow('admin','pengawas'),asyncRoute(async(req,res)=>{const status=String(req.body.status);if(!['draft','scheduled','active','completed'].includes(status))return res.status(400).json({error:'Status tidak valid.'});if(req.session.user.role==='pengawas'&&status!=='active')return res.status(403).json({error:'Pengawas hanya dapat menjalankan ujian.'});const q=await pool.query('UPDATE exams SET status=$1 WHERE id=$2 RETURNING id,status',[status,req.params.id]);if(!q.rowCount)return res.status(404).json({error:'Ujian tidak ditemukan.'});await audit(pool,req.session.user.id,'exam.status',{examId:Number(req.params.id),status});res.json(q.rows[0]);}));
+app.patch('/api/exams/:id/status',allow('admin','pengawas'),requireExamScope,asyncRoute(async(req,res)=>{const status=String(req.body.status);if(!['draft','scheduled','active','completed'].includes(status))return res.status(400).json({error:'Status tidak valid.'});if(req.session.user.role==='pengawas'&&status!=='active')return res.status(403).json({error:'Pengawas hanya dapat menjalankan ujian.'});const q=await pool.query('UPDATE exams SET status=$1 WHERE id=$2 RETURNING id,status',[status,req.params.id]);if(!q.rowCount)return res.status(404).json({error:'Ujian tidak ditemukan.'});await audit(pool,req.session.user.id,'exam.status',{examId:Number(req.params.id),status});res.json(q.rows[0]);}));
 app.post('/api/exams/:id/pin',allow('admin','teacher','pengawas'),requireExamScope,pinIssueLimiter,asyncRoute(async(req,res)=>{
   const validityMinutes=req.body?.validityMinutes;
   if(typeof validityMinutes!=='number'||!Number.isSafeInteger(validityMinutes)||validityMinutes<1||validityMinutes>2147483647)return res.status(400).json({error:'Masa berlaku PIN harus berupa bilangan bulat menit yang positif.'});
@@ -1833,7 +1859,7 @@ app.get('/api/monitor',allow('admin','teacher','pengawas'),asyncRoute(async(req,
     LEFT JOIN violation_events ve ON ve.session_id=es.id
     WHERE (es.status IN ('in_progress','completed','locked') OR es.violation_count>0 OR EXISTS(
       SELECT 1 FROM violation_events pending WHERE pending.session_id=es.id AND pending.review_status IN ('pending','confirmed') AND pending.code<>'admin_reset'
-    )) AND ($1 IN ('admin','pengawas') OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*')))))
+    )) AND ($1='admin' OR ($1='pengawas' AND EXISTS(SELECT 1 FROM exam_proctors ep WHERE ep.exam_id=e.id AND ep.proctor_id=$2)) OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*')))))
     GROUP BY e.id,es.id,u.id ORDER BY e.created_at DESC,u.full_name`,[req.session.user.role,req.session.user.id]);
   res.json(q.rows);
 }));

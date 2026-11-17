@@ -14,6 +14,7 @@ const TENANT_TABLES = [
   'questions',
   'question_media',
   'exams',
+  'exam_proctors',
   'exam_sessions',
   'exam_questions',
   'responses',

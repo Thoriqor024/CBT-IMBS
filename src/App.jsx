@@ -87,7 +87,7 @@ export default function App(){
   const updateSubject=async subject=>{const result=await run(()=>api('/subjects/'+subject.id,{method:'PUT',body:JSON.stringify({name:subject.name,languageCode:subject.languageCode,textDirection:subject.textDirection})}));if(result){await loadAll();setSubjectToEdit(null);setModal('');notify('Mata pelajaran berhasil diperbarui.');}};
   const deleteSubject=async subject=>{if(!window.confirm(`Hapus mata pelajaran "${subject.name}"? Tindakan ini tidak dapat dibatalkan.`))return;const result=await run(()=>api('/subjects/'+subject.id,{method:'DELETE'}));if(result){await loadAll();notify('Mata pelajaran berhasil dihapus.');}};
   const createTeacher=async teacher=>{setTeacherFormError('');setBusy(true);try{const result=await api('/teachers',{method:'POST',body:JSON.stringify(teacher)});setTeacherList(current=>[result,...current]);setModal('');notify('Akun staf dibuat. Username akses: '+result.username);}catch(err){setTeacherFormError(err.message||'Akun staf tidak dapat dibuat.');}finally{setBusy(false);}};
-  const updateTeacherAccess=async changes=>{setTeacherFormError('');setBusy(true);try{const result=await api('/teachers/'+changes.id+'/access',{method:'PUT',body:JSON.stringify(changes)});setTeacherList(current=>current.map(teacher=>String(teacher.id)===String(result.id)?{...teacher,...result}:teacher));setTeacherToEdit(null);setModal('');notify('Akses guru diperbarui.');}catch(err){setTeacherFormError(err.message||'Akses guru tidak dapat diperbarui.');}finally{setBusy(false);}};
+  const updateTeacherAccess=async changes=>{setTeacherFormError('');setBusy(true);try{const result=await api('/teachers/'+changes.id+'/access',{method:'PUT',body:JSON.stringify(changes)});setTeacherList(current=>current.map(teacher=>String(teacher.id)===String(result.id)?{...teacher,...result}:teacher));setTeacherToEdit(null);setModal('');notify('Akses staf diperbarui.');}catch(err){setTeacherFormError(err.message||'Akses staf tidak dapat diperbarui.');}finally{setBusy(false);}};
   const deleteTeacher=async teacher=>{if(!window.confirm(`Hapus akun guru ${teacher.name} (${teacher.username})? Akses login akan dicabut. Data soal, ujian, jawaban, dan nilai tetap disimpan. Tindakan ini tidak dapat dibatalkan.`))return;const result=await run(()=>api(`/teachers/${teacher.id}`,{method:'DELETE'}));if(result){setTeacherList(current=>current.filter(item=>String(item.id)!==String(teacher.id)));notify('Akun guru dihapus dan seluruh sesi login dicabut.');}};
   const saveSubject=async subject=>{const result=await run(()=>api('/subjects',{method:'POST',body:JSON.stringify(subject)}));if(result){await loadAll();setBankForm(form=>({...form,subjectId:String(result.id)}));setSubjectToEdit(null);setModal(subjectReturnModal);notify('Mata pelajaran ditambahkan.');}};
   const openQuestions=async bank=>{setSelectedBank(bank);const result=await run(()=>api('/banks/'+bank.id+'/questions'));if(result){setQuestions(result);setModal('questions');}};
@@ -550,6 +550,7 @@ export default function App(){
             <TeacherCreateForm
               classes={schoolSettings.classes}
               subjects={subjects}
+              exams={exams}
               tenancyEnabled={tenantLoginEnabled}
               busy={busy}
               error={teacherFormError}
@@ -598,6 +599,7 @@ export default function App(){
               teacher={teacherToEdit}
               classes={schoolSettings.classes}
               subjects={subjects}
+              exams={exams}
               busy={busy}
               error={teacherFormError}
               onSave={updateTeacherAccess}
@@ -1148,6 +1150,9 @@ function StudentsPage({
     </>
   );
 }
+function proctorRooms(teacher) {
+  return [...new Set((teacher.exams || []).flatMap(exam => String(exam.className || '').split(',').map(item => item.trim()).filter(Boolean)))];
+}
 function TeacherAccountsPage({ teachers, subjects, quota, onAdd, onImport, onEdit, onDelete }) {
   const [search, setSearch] = useState("");
   const filtered = teachers.filter(t =>
@@ -1180,8 +1185,8 @@ function TeacherAccountsPage({ teachers, subjects, quota, onAdd, onImport, onEdi
           <div className="table-row table-label">
             <span>NAMA GURU</span>
             <span>USERNAME</span>
-            <span>KELAS</span>
-            <span>MATA PELAJARAN</span>
+            <span>KELAS / RUANGAN</span>
+            <span>MATA PELAJARAN / SESI UJIAN</span>
             <span style={{ textAlign: "right" }}>AKSES</span>
           </div>
           {filtered.map((teacher, i) => <div className="table-row" key={teacher.id}>
@@ -1192,8 +1197,12 @@ function TeacherAccountsPage({ teachers, subjects, quota, onAdd, onImport, onEdi
               {teacher.name}
             </span>
             <span className="mono">{teacher.username}<small style={{display:'block',marginTop:3,color:'#7b8b9b'}}>{teacher.role === 'pengawas' ? 'Pengawas' : 'Guru'}</small></span>
-            <span>{teacher.classes.length ? teacher.classes.join(', ') : 'Belum ditetapkan'}</span>
-            <span>{teacher.subjectIds.length ? teacher.subjectIds.map(id => subjects.find(subject => Number(subject.id) === Number(id))?.name || id).join(', ') : 'Belum ditetapkan'}</span>
+            <span>{teacher.role === 'pengawas'
+              ? (proctorRooms(teacher).join(', ') || 'Belum ditetapkan')
+              : (teacher.classes.length ? teacher.classes.join(', ') : 'Belum ditetapkan')}</span>
+            <span>{teacher.role === 'pengawas'
+              ? ((teacher.exams || []).map(exam => exam.title).join(', ') || 'Belum ditetapkan')
+              : (teacher.subjectIds.length ? teacher.subjectIds.map(id => subjects.find(subject => Number(subject.id) === Number(id))?.name || id).join(', ') : 'Belum ditetapkan')}</span>
             <span className="teacher-account-actions">
               <button className="secondary" onClick={() => onEdit(teacher)}>Atur akses</button>
               <button className="teacher-delete-button" aria-label={`Hapus akun ${teacher.name}`} onClick={() => onDelete(teacher)}><Trash2 size={13}/> Hapus</button>
