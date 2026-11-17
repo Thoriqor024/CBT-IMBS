@@ -1,7 +1,7 @@
 import pg from 'pg';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { getPoolConfig } from './db.js';
+import { getPoolConfig, LATEST_DATABASE_MIGRATION_VERSION } from './db.js';
 import { TenantDatabaseRouter } from './tenantDatabaseRouter.js';
 import { createTenantRegistry } from './tenantRegistry.js';
 import { createTenantDatabaseContext } from './tenantDatabaseContext.js';
@@ -134,6 +134,50 @@ export function createTenantRuntime({ env = process.env, PoolClass = Pool, resol
       await controlPool.query('SELECT id FROM control_plane.tenants LIMIT 0');
       await controlPool.query('SELECT secret_ref FROM control_plane.tenant_database_secrets LIMIT 0');
       await controlPool.query('SELECT sid FROM public.user_sessions LIMIT 0');
+    },
+    // Terapkan migrasi schema ke database tenant yang sudah ada (bukan hanya tenant baru).
+    // Memakai kredensial migrasi tenant karena role aplikasi tidak memiliki hak DDL.
+    async migrateExistingTenants(initializeDatabase, { logger = console } = {}) {
+      if (typeof initializeDatabase !== 'function') throw new TypeError('initializeDatabase is required.');
+      const pending = await controlPool.query(
+        `SELECT id,database_name AS "databaseName",database_secret_ref AS "databaseSecretRef"
+         FROM control_plane.tenants
+         WHERE status <> 'closed' AND schema_version < $1
+         ORDER BY created_at,id`,
+        [LATEST_DATABASE_MIGRATION_VERSION],
+      );
+      const results = [];
+      for (const tenant of pending.rows) {
+        const tenantId = tenant.id;
+        let tenantPool = null;
+        try {
+          const migrationSecretRef = String(tenant.databaseSecretRef || '').replace(/\/application$/, '/migration');
+          const credentials = await getTenantSecret(migrationSecretRef);
+          if (!credentials || typeof credentials.user !== 'string' || !credentials.user
+            || typeof credentials.password !== 'string' || !credentials.password) {
+            throw new Error('Kredensial migrasi tenant tidak tersedia.');
+          }
+          tenantPool = new PoolClass(getPoolConfig({
+            ...env,
+            DB_NAME: tenant.databaseName,
+            DB_USER: credentials.user,
+            DB_PASSWORD: credentials.password,
+            DB_POOL_MAX: '1',
+          }));
+          await initializeDatabase(tenantPool);
+          await controlPool.query(
+            'UPDATE control_plane.tenants SET schema_version=$2,updated_at=NOW() WHERE id=$1 AND schema_version < $2',
+            [tenantId, LATEST_DATABASE_MIGRATION_VERSION],
+          );
+          results.push({ tenantId, ok: true, schemaVersion: LATEST_DATABASE_MIGRATION_VERSION });
+        } catch (error) {
+          results.push({ tenantId, ok: false, error: error.message });
+          logger.error?.(`[schema] Tenant ${tenantId} gagal dimigrasi: ${error.message}`);
+        } finally {
+          await tenantPool?.end().catch(() => {});
+        }
+      }
+      return results;
     },
     async close() {
       await router.close();

@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { normalizeTenantCode } from './tenantDatabaseRouter.js';
 import { normalizeAccountEmail } from './userIdentity.js';
+import { LATEST_DATABASE_MIGRATION_VERSION } from './db.js';
 
 const quoteIdentifier = value => `"${String(value).replaceAll('"','""')}"`;
 const quoteLiteral = value => `'${String(value).replaceAll("'","''")}'`;
@@ -74,7 +75,7 @@ export class TenantProvisioner {
       await this.controlPool.query(`INSERT INTO control_plane.tenants
         (id,school_code,display_name,status,database_name,database_secret_ref,schema_version,
          max_students,max_teachers,trial_ends_at,created_at,updated_at)
-        VALUES($1,$2,$3,'trial',$4,$5,2,$6,$7,$8,NOW(),NOW())`,
+        VALUES($1,$2,$3,'trial',$4,$5,${LATEST_DATABASE_MIGRATION_VERSION},$6,$7,$8,NOW(),NOW())`,
       [tenantId,code,name,databaseName,secretRef,maxStudents,maxTeachers,trialEnd.toISOString()]);
       registryCreated=true;
       await this.controlPool.query(
