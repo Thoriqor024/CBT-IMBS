@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { RefreshCw, CircleAlert, ShieldCheck, ChevronDown, ChevronUp, Clock3, Wifi, WifiOff, Check, X, RotateCcw } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { RefreshCw, CircleAlert, ShieldCheck, ChevronDown, ChevronUp, Clock3, Wifi, WifiOff, Check, X, RotateCcw, DoorOpen } from 'lucide-react';
 
 const eventLabels = {
   tab_hidden: 'Tab ujian tersembunyi',
@@ -15,19 +15,22 @@ const eventLabels = {
 export default function Monitor({exam,students,canManage,canRecordViolation=false,onRefresh,onViolation,onReviewEvent,onReviewSession,onReset}){
   const [expanded,setExpanded]=useState({});
   const [now,setNow]=useState(Date.now());
+  const [room,setRoom]=useState('all');
   useEffect(()=>{if(!exam?.id)return;const refresh=setInterval(()=>onRefresh(),5000),clock=setInterval(()=>setNow(Date.now()),1000);return()=>{clearInterval(refresh);clearInterval(clock);};},[exam?.id]);
-  const count={running:students.filter(s=>s.status==='in_progress').length,done:students.filter(s=>s.status==='completed'&&!Number(s.violationCount)).length,warning:students.filter(s=>s.status==='in_progress'&&(s.violationReviewRequired||Number(s.violationCount)>0)).length,blocked:students.filter(s=>s.status==='locked').length,pending:students.reduce((total,s)=>total+(s.events||[]).filter(event=>event.reviewStatus==='pending').length,0)};
+  const rooms=useMemo(()=>[...new Set(students.map(s=>s.roomName).filter(Boolean))].sort((left,right)=>left.localeCompare(right,'id-ID')),[students]);
+  const visible=room==='all'?students:students.filter(s=>s.roomName===room);
+  const count={running:visible.filter(s=>s.status==='in_progress').length,done:visible.filter(s=>s.status==='completed'&&!Number(s.violationCount)).length,warning:visible.filter(s=>s.status==='in_progress'&&(s.violationReviewRequired||Number(s.violationCount)>0)).length,blocked:visible.filter(s=>s.status==='locked').length,pending:visible.reduce((total,s)=>total+(s.events||[]).filter(event=>event.reviewStatus==='pending').length,0)};
   const toggle=id=>setExpanded(current=>({...current,[id]:!current[id]}));
   return <>
     <div className="monitor-legend"><span><i className="monitor-signal in_progress"/>Sedang ujian · abu-abu</span><span><i className="monitor-signal completed"/>Selesai · hijau</span><span><i className="monitor-signal warning"/>Menunggu keputusan · kuning</span><span><i className="monitor-signal violation"/>Diblokir oleh pengawas · merah</span></div>
-    <div className="monitor-toolbar"><span>{students.length} peserta · {count.running} mengerjakan · {count.done} selesai · {count.warning} perlu ditinjau · {count.blocked} diblokir · {count.pending} sinyal menunggu tinjauan</span><button className="secondary" onClick={onRefresh}><RefreshCw size={14}/> Perbarui</button></div>
-    <div className="monitor-list">{students.map(s=>{
+    <div className="monitor-toolbar"><span>{visible.length}{room==='all'?'':' dari '+students.length} peserta · {count.running} mengerjakan · {count.done} selesai · {count.warning} perlu ditinjau · {count.blocked} diblokir · {count.pending} sinyal menunggu tinjauan</span><div className="monitor-toolbar-actions">{rooms.length>0&&<label className="monitor-room-filter"><DoorOpen size={13}/><select value={room} onChange={event=>setRoom(event.target.value)} aria-label="Filter ruang ujian"><option value="all">Semua ruang</option>{rooms.map(name=><option key={name} value={name}>{name}</option>)}</select></label>}<button className="secondary" onClick={onRefresh}><RefreshCw size={14}/> Perbarui</button></div></div>
+    <div className="monitor-list">{visible.map(s=>{
       const n=Number(s.violationCount)||0,blocked=s.status==='locked',reviewRequired=s.status==='in_progress'&&Boolean(s.violationReviewRequired),warning=!blocked&&(reviewRequired||n>0),signal=blocked?'violation':warning?'warning':s.status;
       const label=blocked?'DIBLOKIR':reviewRequired?'MENUNGGU PENGAWAS':warning?`PERINGATAN ${n}/2`:s.status==='in_progress'?'SEDANG UJIAN':s.status==='completed'?'SELESAI':'BELUM MULAI';
       const events=Array.isArray(s.events)?[...s.events].reverse():[];
       return <div className="monitor-person" key={s.id}>
         <div className={`monitor-row ${blocked?'has-violation':warning?'has-warning':''}`}>
-          <span className={`monitor-signal ${signal}`}/><b>{s.name}</b><code>{s.username}</code><span>{s.className}</span>
+          <span className={`monitor-signal ${signal}`}/><b>{s.name}</b><code>{s.username}</code><span>{s.className}</span><span className="monitor-room" title="Ruang ujian">{s.roomName||'—'}</span>
           <span className={`monitor-state ${blocked?'violation-text':warning?'warning-text':''}`}>{label}{s.status==='in_progress'&&(()=>{const live=Boolean(s.lastPingAt&&now-Date.parse(s.lastPingAt)<35000);return <small className={`monitor-presence ${live?'online':'offline'}`}>{live?<Wifi size={11}/>:<WifiOff size={11}/>} {live?'Online':'Terputus'}</small>;})()}</span>
           <span>{s.score??'—'}</span>
           <div className="monitor-actions">
@@ -48,7 +51,7 @@ export default function Monitor({exam,students,canManage,canRecordViolation=fals
           </article>)}
         </div>}
       </div>;
-    })}{!students.length&&<div className="monitor-empty">Belum ada siswa yang ditugaskan pada sesi ini.</div>}</div>
+    })}{!visible.length&&<div className="monitor-empty">{students.length?'Tidak ada peserta pada ruang ujian ini.':'Belum ada siswa yang ditugaskan pada sesi ini.'}</div>}</div>
     <div className="form-note"><ShieldCheck size={16}/>{canManage?'Dua sinyal yang menunggu atau sudah dikonfirmasi menahan sesi sampai pengawas memilih konfirmasi blokir atau false positive. Konfirmasi memblokir akses; false positive membuka kembali ujian.':'Sinyal browser ditinjau pengawas dan tidak otomatis mengunci sesi.'} Riwayat sinyal bukan bukti tunggal. Pemantauan diperbarui setiap 5 detik.</div>
   </>;
 }

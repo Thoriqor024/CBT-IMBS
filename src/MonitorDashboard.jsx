@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api';
-import { RefreshCw, Clock3, ChevronDown, ChevronUp, Wifi, WifiOff, Check, X, CircleAlert, RotateCcw, Search } from 'lucide-react';
+import { RefreshCw, Clock3, ChevronDown, ChevronUp, Wifi, WifiOff, Check, X, CircleAlert, RotateCcw, Search, DoorOpen } from 'lucide-react';
 
 const eventLabels = {
   tab_hidden: 'Tab ujian tersembunyi',
@@ -19,6 +19,7 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
+  const [room, setRoom] = useState('all');
 
   const refresh = useCallback(async () => {
     setError('');
@@ -40,9 +41,11 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
 
   const isViolation = student => student.status === 'locked' || Number(student.violationCount) > 0 ||
     (student.events || []).some(event => event.code !== 'admin_reset' && ['pending', 'confirmed'].includes(event.reviewStatus));
-  const violations = useMemo(() => sessions.filter(isViolation), [sessions]);
-  const completed = useMemo(() => sessions.filter(student => student.status === 'completed' && !isViolation(student)), [sessions]);
-  const active = useMemo(() => sessions.filter(student => student.status === 'in_progress' && !isViolation(student)), [sessions]);
+  const rooms = useMemo(() => [...new Set(sessions.map(session => session.roomName).filter(Boolean))].sort((left, right) => left.localeCompare(right, 'id-ID')), [sessions]);
+  const scopedSessions = useMemo(() => room === 'all' ? sessions : sessions.filter(session => session.roomName === room), [sessions, room]);
+  const violations = useMemo(() => scopedSessions.filter(isViolation), [scopedSessions]);
+  const completed = useMemo(() => scopedSessions.filter(student => student.status === 'completed' && !isViolation(student)), [scopedSessions]);
+  const active = useMemo(() => scopedSessions.filter(student => student.status === 'in_progress' && !isViolation(student)), [scopedSessions]);
 
   const toggle = id => setExpanded(current => ({ ...current, [id]: !current[id] }));
   const showAll = () => setExpanded(Object.fromEntries([...active, ...violations, ...completed].map(s => [s.id, true])));
@@ -50,7 +53,7 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
   return <>
     <div className="page-title-row">
       <div><div className="eyebrow">PEMANTAUAN LANGSUNG</div><h1>Pantau ujian</h1><p>Peserta aktif dan catatan pelanggaran diperbarui otomatis setiap 5 detik.</p></div>
-      <div className="button-row"><button className="secondary" onClick={refresh}><RefreshCw size={15}/> Perbarui</button><button className="secondary" onClick={showAll}><Clock3 size={15}/> Tampilkan log</button></div>
+      <div className="button-row">{rooms.length > 0 && <label className="monitor-room-filter"><DoorOpen size={14}/><select value={room} onChange={event => setRoom(event.target.value)} aria-label="Filter ruang ujian"><option value="all">Semua ruang</option>{rooms.map(name => <option key={name} value={name}>{name}</option>)}</select></label>}<button className="secondary" onClick={refresh}><RefreshCw size={15}/> Perbarui</button><button className="secondary" onClick={showAll}><Clock3 size={15}/> Tampilkan log</button></div>
     </div>
     {error && <div className="monitor-dashboard-error" role="alert"><CircleAlert size={15}/>{error}</div>}
     <div className="admin-monitor-grid">
@@ -99,7 +102,7 @@ function FragmentRow({ student, events, expanded, toggle, held, isActive, online
   return <>
     <tr className={blocked || violationCount ? 'admin-monitor-violation' : pendingEvents.length ? 'admin-monitor-pending' : ''}>
       <td><b>{student.name}</b><small>{student.username} · {student.className}</small></td>
-      <td><b>{student.examTitle}</b><small>Kelas {student.className}</small></td>
+      <td><b>{student.examTitle}</b><small>Kelas {student.className}{student.roomName ? ' · ' + student.roomName : ''}</small></td>
       <td><span className={`admin-monitor-state ${blocked ? 'blocked' : held || violationCount || pendingEvents.length ? 'warning' : ''}`}>{label}</span>{isActive && <small className={`admin-monitor-presence ${online ? 'online' : 'offline'}`}>{online ? <Wifi size={11}/> : <WifiOff size={11}/>} {online ? 'Online' : 'Terputus'}</small>}</td>
       <td><button className="admin-monitor-log-button" onClick={toggle} disabled={!events.length} title={events.length ? 'Tampilkan log siswa' : 'Belum ada log'}><Clock3 size={13}/>{events.length}<span>{expanded ? <ChevronUp size={13}/> : <ChevronDown size={13}/>}</span></button></td>
       <td><div className="admin-monitor-actions">{canRecordViolation && isActive && student.examStatus === 'active' && !held && <button className="dismiss" disabled={busy} onClick={() => onViolation(student)}><CircleAlert size={12}/> Catat pelanggaran</button>}{held && showReviewActions && <><button className="confirm" disabled={busy} onClick={() => onReviewSession(student, 'block')}><Check size={12}/> Blokir</button><button className="dismiss" disabled={busy} onClick={() => onReviewSession(student, 'false_positive')}><X size={12}/> False positive</button></>}{student.examStatus === 'active' && (blocked || violationCount > 0) && <button className="dismiss" disabled={busy} onClick={() => onReset(student)}><RotateCcw size={12}/> Pulihkan sesi</button>}</div></td>
