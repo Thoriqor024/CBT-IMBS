@@ -95,6 +95,12 @@ export async function initializeDatabase(targetPool = pool) {
       ALTER TABLE exams ADD COLUMN IF NOT EXISTS entry_pin_updated_at TIMESTAMPTZ;
       ALTER TABLE exams ADD COLUMN IF NOT EXISTS entry_pin_expires_at TIMESTAMPTZ;
       ALTER TABLE exams ADD COLUMN IF NOT EXISTS entry_pin_issued_by BIGINT REFERENCES users(id);
+      CREATE TABLE IF NOT EXISTS exam_proctors (
+        exam_id BIGINT NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
+        proctor_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        PRIMARY KEY(exam_id,proctor_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_exam_proctors_proctor ON exam_proctors(proctor_id);
       CREATE TABLE IF NOT EXISTS exam_sessions (
         id BIGSERIAL PRIMARY KEY, exam_id BIGINT NOT NULL REFERENCES exams(id) ON DELETE CASCADE,
         student_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -184,6 +190,12 @@ export async function initializeDatabase(targetPool = pool) {
       const migrationSql = await readFile(new URL('./migrations/005_pengawas-role.sql', import.meta.url), 'utf8');
       await client.query(migrationSql);
       await client.query('INSERT INTO schema_migrations(version,name) VALUES($1,$2)', [5, 'pengawas-role']);
+    }
+    const proctorAssignmentMigration = await client.query('SELECT 1 FROM schema_migrations WHERE version=$1', [6]);
+    if (!proctorAssignmentMigration.rowCount) {
+      const migrationSql = await readFile(new URL('./migrations/006_exam-proctors.sql', import.meta.url), 'utf8');
+      await client.query(migrationSql);
+      await client.query('INSERT INTO schema_migrations(version,name) VALUES($1,$2)', [6, 'exam-proctors']);
     }
     await client.query('COMMIT');
   } catch (error) {

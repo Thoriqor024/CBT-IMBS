@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Check, KeyRound, Plus, X } from 'lucide-react';
 
-export default function TeacherCreateForm({ teacher, classes, subjects, tenancyEnabled = false, busy, error, onSave, onCancel }) {
+export default function TeacherCreateForm({ teacher, classes, subjects, exams = [], tenancyEnabled = false, busy, error, onSave, onCancel }) {
   const [role, setRole] = useState(teacher?.role || 'teacher');
   const [name, setName] = useState(teacher?.name || '');
   const [username, setUsername] = useState(teacher?.username || '');
@@ -9,6 +9,7 @@ export default function TeacherCreateForm({ teacher, classes, subjects, tenancyE
   const [password, setPassword] = useState('');
   const [selectedClasses, setSelectedClasses] = useState(teacher?.classes || []);
   const [selectedSubjects, setSelectedSubjects] = useState((teacher?.subjectIds || []).map(String));
+  const [selectedExams, setSelectedExams] = useState((teacher?.exams || []).map(exam => String(exam.id)));
 
   const toggle = (values, value, setValues) => setValues(current => current.includes(value)
     ? current.filter(item => item !== value)
@@ -17,8 +18,8 @@ export default function TeacherCreateForm({ teacher, classes, subjects, tenancyE
   const submit = event => {
     event.preventDefault();
     onSave(teacher
-      ? { id: teacher.id, role, classes: selectedClasses, subjectIds: selectedSubjects.map(Number) }
-      : { name, username, email, password, role, classes: selectedClasses, subjectIds: selectedSubjects.map(Number) });
+      ? { id: teacher.id, role, classes: selectedClasses, subjectIds: selectedSubjects.map(Number), examIds: selectedExams.map(Number) }
+      : { name, username, email, password, role, classes: selectedClasses, subjectIds: selectedSubjects.map(Number), examIds: selectedExams.map(Number) });
   };
 
   return <form className="teacher-create-form" onSubmit={submit}>
@@ -28,7 +29,14 @@ export default function TeacherCreateForm({ teacher, classes, subjects, tenancyE
       {tenancyEnabled&&<label>Email login guru<input type="email" autoComplete="email" maxLength="254" value={email} onChange={event=>setEmail(event.target.value)} required/></label>}
       <label>Password awal<input type="password" autoComplete="new-password" minLength="8" maxLength="128" value={password} onChange={event => setPassword(event.target.value)} required/></label>
     </>}
-    <label>Role staf<select value={role} onChange={event => setRole(event.target.value)}><option value="teacher">Guru</option><option value="pengawas">Pengawas</option></select><small>{role === 'pengawas' ? 'Akses ujian, PIN, monitoring, blokir, false positive, dan pulihkan sesi.' : 'Akses akademik mengikuti kelas dan mata pelajaran yang dipilih.'}</small></label>
+    <label>Role staf<select value={role} onChange={event => setRole(event.target.value)}><option value="teacher">Guru</option><option value="pengawas">Pengawas</option></select><small>{role === 'pengawas' ? 'Hanya sesi ujian yang dipilih di sini yang dapat dipantau.' : 'Akses akademik mengikuti kelas dan mata pelajaran yang dipilih.'}</small></label>
+    {role === 'pengawas' && <fieldset><legend>Sesi ujian yang diawasi <span className="legend-count">{selectedExams.length} dipilih</span></legend>
+      {exams.length ? <div className="teacher-access-options">{exams.map(exam => {
+        const isSelected = selectedExams.includes(String(exam.id));
+        return <label key={exam.id} className={`teacher-access-item${isSelected ? ' selected' : ''}`}><input type="checkbox" checked={isSelected} onChange={() => toggle(selectedExams, String(exam.id), setSelectedExams)}/><span className="access-badge">{isSelected ? <Check size={12}/> : <Plus size={12}/>}</span><span className="access-label-text">{exam.title} · {exam.className}</span></label>;
+      })}</div> : <div className="form-note">Belum ada sesi ujian. Buat ujian terlebih dahulu, lalu tetapkan pengawasnya di sini.</div>}
+      <div className="form-note"><KeyRound size={15}/> Pengawas hanya melihat sesi ujian, peserta, dan PIN dari sesi yang dipilih.</div>
+    </fieldset>}
     {role === 'teacher' && <><fieldset><legend>Kelas yang boleh diakses <span className="legend-count">{selectedClasses.length} dipilih</span></legend><div className="teacher-access-options">{classes.map(className => {
       const isSelected = selectedClasses.includes(className);
       return <label key={className} className={`teacher-access-item${isSelected ? ' selected' : ''}`}><input type="checkbox" checked={isSelected} onChange={() => toggle(selectedClasses, className, setSelectedClasses)}/><span className="access-badge">{isSelected ? <Check size={12}/> : <Plus size={12}/>}</span><span className="access-label-text">{className}</span></label>;
