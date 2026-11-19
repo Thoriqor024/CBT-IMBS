@@ -360,6 +360,7 @@ export default function App(){
               rooms={rooms}
               unassigned={roomUnassigned}
               classes={schoolSettings.classes}
+              schoolName={schoolSettings.schoolName}
               busy={busy}
               onCreate={createRoom}
               onUpdate={updateRoom}

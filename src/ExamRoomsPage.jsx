@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react';
-import { DoorOpen, Download, Plus, Trash2, Users, X } from 'lucide-react';
+import { ClipboardList, DoorOpen, Download, Plus, Trash2, Users, X } from 'lucide-react';
 import { api } from './api';
+import { attendanceSessionLabel, exportAttendancePdf, formatAttendanceTime } from './attendanceExport.js';
 import { exportRoom } from './roomExport.js';
 
-export default function ExamRoomsPage({ rooms = [], unassigned = [], classes = [], busy, onCreate, onUpdate, onDelete }) {
+const examStatusLabel = status => ({ draft: 'Draf', scheduled: 'Terjadwal', active: 'Berlangsung', completed: 'Selesai' }[status] || status || '—');
+
+export default function ExamRoomsPage({ rooms = [], unassigned = [], classes = [], schoolName = '', busy, onCreate, onUpdate, onDelete }) {
   const [modal, setModal] = useState(null);
   const [name, setName] = useState('');
   const [quotas, setQuotas] = useState({});
@@ -11,6 +14,10 @@ export default function ExamRoomsPage({ rooms = [], unassigned = [], classes = [
   const [saving, setSaving] = useState(false);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [attendance, setAttendance] = useState(null);
+  const [attendanceExamId, setAttendanceExamId] = useState('');
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+  const [attendanceError, setAttendanceError] = useState('');
 
   const unassignedMap = useMemo(() => new Map(unassigned.map(item => [item.className, Number(item.count) || 0])), [unassigned]);
   const totalStudents = rooms.reduce((total, room) => total + Number(room.studentCount || 0), 0);
@@ -41,6 +48,51 @@ export default function ExamRoomsPage({ rooms = [], unassigned = [], classes = [
       setError(err.message || 'Data ruang ujian tidak dapat dimuat.');
     } finally {
       setDetailLoading(false);
+    }
+  };
+
+  const openAttendance = async room => {
+    setModal({ mode: 'attendance', room });
+    setAttendance(null);
+    setAttendanceExamId('');
+    setAttendanceError('');
+    setAttendanceLoading(true);
+    try {
+      const data = await api(`/rooms/${room.id}/attendance`);
+      setAttendance(data);
+      setAttendanceExamId(data.exam ? String(data.exam.id) : '');
+    } catch (err) {
+      setAttendanceError(err.message || 'Data absensi tidak dapat dimuat.');
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
+  const changeAttendanceExam = async event => {
+    const examId = event.target.value;
+    if (!examId || !modal?.room) return;
+    const previousId = attendance?.exam ? String(attendance.exam.id) : '';
+    setAttendanceExamId(examId);
+    setAttendanceError('');
+    setAttendanceLoading(true);
+    try {
+      const data = await api(`/rooms/${modal.room.id}/attendance?examId=${encodeURIComponent(examId)}`);
+      setAttendance(data);
+      setAttendanceExamId(data.exam ? String(data.exam.id) : '');
+    } catch (err) {
+      setAttendanceExamId(previousId);
+      setAttendanceError(err.message || 'Absensi ujian tidak dapat dimuat.');
+    } finally {
+      setAttendanceLoading(false);
+    }
+  };
+
+  const downloadAttendance = () => {
+    if (!attendance?.exam) return;
+    try {
+      exportAttendancePdf({ ...attendance, schoolName });
+    } catch (err) {
+      setAttendanceError(err.message || 'Absensi tidak dapat diekspor.');
     }
   };
 
@@ -83,6 +135,9 @@ export default function ExamRoomsPage({ rooms = [], unassigned = [], classes = [
     if (saving) return;
     setModal(null);
     setDetail(null);
+    setAttendance(null);
+    setAttendanceExamId('');
+    setAttendanceError('');
     setError('');
   };
 
@@ -103,7 +158,7 @@ export default function ExamRoomsPage({ rooms = [], unassigned = [], classes = [
           <p>{rooms.length} ruang · {totalStudents} siswa terplotting · {totalUnassigned} siswa belum mendapat ruang</p>
         </div>
       </div>
-      <div className="student-table wide">
+      <div className="student-table wide room-table">
         <div className="table-row table-label">
           <span>NAMA RUANG</span>
           <span>KUOTA KELAS</span>
@@ -116,7 +171,8 @@ export default function ExamRoomsPage({ rooms = [], unassigned = [], classes = [
           <span>{(room.quotas || []).map(quota => `${quota.className}: ${quota.count}`).join(' · ') || 'Belum diatur'}</span>
           <span><Users size={13}/> {room.studentCount} siswa</span>
           <span>{(room.classCounts || []).map(item => `${item.className} (${item.count})`).join(' · ') || '-'}</span>
-          <span className="teacher-account-actions">
+          <span className="teacher-account-actions room-actions">
+            <button className="secondary" onClick={() => openAttendance(room)}><ClipboardList size={13}/> Absensi</button>
             <button className="secondary" onClick={() => openDetail(room)}>Lihat siswa</button>
             <button className="secondary" onClick={() => openEdit(room)}>Atur</button>
             <button className="secondary" onClick={() => download(room)}><Download size={13}/> Excel</button>
@@ -151,6 +207,70 @@ export default function ExamRoomsPage({ rooms = [], unassigned = [], classes = [
           <button type="submit" className="primary" disabled={saving || busy}>{saving ? 'Menyimpan…' : 'Simpan ruang'}</button>
         </div>
       </form>
+    </div>}
+
+    {modal?.mode === 'attendance' && <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && closeModal()}>
+      <div className="modal attendance-modal">
+        <div className="modal-head">
+          <div><div className="eyebrow">ABSENSI PESERTA</div><h2>{modal.room.name}</h2></div>
+          <button type="button" className="icon-button" onClick={closeModal}><X size={18}/></button>
+        </div>
+
+        {attendanceLoading && !attendance ? <div className="room-empty"><ClipboardList size={22}/><span>Memuat data absensi…</span></div>
+          : attendanceError && !attendance ? <div className="question-form-error" role="alert">{attendanceError}</div>
+            : attendance ? <>
+              {attendance.exams.length > 0 && <label className="attendance-picker">Ujian
+                <select value={attendanceExamId} onChange={changeAttendanceExam} disabled={attendanceLoading}>
+                  {attendance.exams.map(exam => <option key={exam.id} value={exam.id}>
+                    {exam.title} — {attendanceSessionLabel(exam)} ({examStatusLabel(exam.status)})
+                  </option>)}
+                </select>
+              </label>}
+
+              {attendanceLoading ? <div className="room-empty"><span>Memuat absensi ujian…</span></div>
+                : !attendance.exams.length ? <div className="room-empty"><ClipboardList size={22}/><b>Belum ada ujian pada ruang ini</b><span>Hubungkan ujian ke ruang agar absensi peserta dapat dicatat.</span></div>
+                  : attendance.exam ? <>
+                    {attendanceError && <div className="question-form-error" role="alert">{attendanceError}</div>}
+                    <div className="attendance-summary">
+                      <div className="attendance-stat present"><span>Hadir</span><b>{attendance.summary.present}</b></div>
+                      <div className="attendance-stat absent"><span>Alpa</span><b>{attendance.summary.absent}</b></div>
+                      <div className="attendance-stat"><span>Total peserta</span><b>{attendance.summary.total}</b></div>
+                    </div>
+                    <div className="attendance-meta">
+                      <span>{attendance.exam.subject || 'Mata pelajaran —'}</span>
+                      <span>{attendance.exam.className || 'Kelas —'}</span>
+                      <span>{attendanceSessionLabel(attendance.exam)}</span>
+                      <span>Status: {examStatusLabel(attendance.exam.status)}</span>
+                    </div>
+                    <div className="attendance-table-wrap">
+                      <table className="attendance-table">
+                        <thead><tr><th>No</th><th>Nama siswa</th><th>Kelas</th><th>Sesi ujian</th><th>Status</th><th>Masuk</th></tr></thead>
+                        <tbody>
+                          {attendance.students.map((student, index) => <tr key={student.sessionId}>
+                            <td className="number">{index + 1}</td>
+                            <td className="name">{student.name}</td>
+                            <td>{student.className}</td>
+                            <td>{attendanceSessionLabel(attendance.exam)}</td>
+                            <td><span className={`attendance-status ${student.present ? 'present' : 'absent'}`}>{student.present ? 'Hadir' : 'Alpa'}</span></td>
+                            <td className="time">{student.present ? formatAttendanceTime(student.startedAt) : '—'}</td>
+                          </tr>)}
+                          {!attendance.students.length && <tr><td colSpan="6" className="attendance-empty">Tidak ada peserta pada ujian ini.</td></tr>}
+                        </tbody>
+                      </table>
+                    </div>
+                    {attendance.canExport
+                      ? <div className="attendance-note export">Dialog cetak akan terbuka. Pilih “Simpan sebagai PDF”.</div>
+                      : <div className="attendance-note">Ekspor PDF aktif setelah seluruh sesi ujian selesai.</div>}
+                  </> : <div className="question-form-error" role="alert">Ujian tidak ditemukan pada ruang ini.</div>}
+            </> : null}
+
+        <div className="modal-actions">
+          <button type="button" className="secondary" onClick={closeModal}>Tutup</button>
+          <button type="button" className="primary" disabled={!attendance?.canExport || !attendance?.students?.length} onClick={downloadAttendance} title={attendance?.canExport ? 'Buka dialog cetak untuk menyimpan PDF' : 'Aktif setelah seluruh sesi ujian selesai'}>
+            <Download size={14}/> Ekspor PDF
+          </button>
+        </div>
+      </div>
     </div>}
 
     {modal?.mode === 'detail' && <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && closeModal()}>

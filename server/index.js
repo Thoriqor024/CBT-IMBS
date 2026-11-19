@@ -1788,6 +1788,7 @@ app.get('/api/stimuli/:id/media', auth, asyncRoute(async (req, res) => {
 const examRoomApi=createExamRoomApi({pool,audit,pickExamQuestions});
 app.get('/api/rooms',allow('admin','teacher'),asyncRoute(examRoomApi.listRooms));
 app.get('/api/rooms/:id',allow('admin'),asyncRoute(examRoomApi.getRoom));
+app.get('/api/rooms/:id/attendance',allow('admin'),asyncRoute(examRoomApi.getRoomAttendance));
 app.post('/api/rooms',allow('admin'),asyncRoute(examRoomApi.createRoom));
 app.put('/api/rooms/:id',allow('admin'),asyncRoute(examRoomApi.updateRoom));
 app.delete('/api/rooms/:id',allow('admin'),asyncRoute(examRoomApi.deleteRoom));

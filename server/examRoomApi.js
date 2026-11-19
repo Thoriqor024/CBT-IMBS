@@ -1,4 +1,5 @@
 import { matchBankGrade, normalizeRoomQuotas } from './examRooms.js';
+import { canExportAttendance, summarizeAttendance } from './attendance.js';
 
 const httpError = (message, status = 400) => Object.assign(new Error(message), { status });
 
@@ -50,6 +51,65 @@ export function createExamRoomApi({ pool, audit, pickExamQuestions }) {
       FROM exam_room_students ers JOIN users u ON u.id=ers.student_id
       WHERE ers.room_id=$1 ORDER BY ers.class_name,u.full_name`, [req.params.id]);
     res.json({ ...room.rows[0], students: students.rows });
+  }
+
+  async function getRoomAttendance(req, res) {
+    const roomId = Number(req.params.id);
+    if (!Number.isSafeInteger(roomId) || roomId < 1) throw httpError('ID ruang ujian tidak valid.');
+    const requestedExamId = req.query.examId === undefined ? null : Number(req.query.examId);
+    if (requestedExamId !== null && (!Number.isSafeInteger(requestedExamId) || requestedExamId < 1)) {
+      throw httpError('ID ujian tidak valid.');
+    }
+
+    const room = await pool.query('SELECT id,name FROM exam_rooms WHERE id=$1', [roomId]);
+    if (!room.rowCount) return res.status(404).json({ error: 'Ruang ujian tidak ditemukan.' });
+
+    const exams = await pool.query(`SELECT e.id,e.title,e.status,e.class_name AS "className",
+      e.session_number AS "sessionNumber",to_char(e.session_date,'YYYY-MM-DD') AS "sessionDate",
+      to_char(e.session_start,'HH24:MI') AS "sessionStart",to_char(e.session_end,'HH24:MI') AS "sessionEnd",
+      s.name AS subject,
+      count(es.id)::int AS "participantCount",
+      count(es.id) FILTER (WHERE es.started_at IS NOT NULL)::int AS "presentCount",
+      count(es.id) FILTER (WHERE es.status='in_progress')::int AS "inProgressCount"
+      FROM exam_room_links erl JOIN exams e ON e.id=erl.exam_id
+      JOIN question_banks b ON b.id=e.bank_id JOIN subjects s ON s.id=b.subject_id
+      LEFT JOIN exam_sessions es ON es.exam_id=e.id AND (es.room_id=erl.room_id OR (
+        es.room_id IS NULL AND EXISTS(SELECT 1 FROM exam_room_students ers
+          WHERE ers.room_id=erl.room_id AND ers.student_id=es.student_id)))
+      WHERE erl.room_id=$1
+      GROUP BY e.id,s.name ORDER BY e.created_at DESC,e.id DESC`, [roomId]);
+
+    if (!exams.rowCount) {
+      return res.json({
+        room: room.rows[0],
+        exams: [],
+        exam: null,
+        students: [],
+        summary: { present: 0, absent: 0, total: 0 },
+        canExport: false,
+      });
+    }
+
+    const selected = requestedExamId === null
+      ? exams.rows[0]
+      : exams.rows.find(exam => Number(exam.id) === requestedExamId);
+    if (!selected) throw httpError('Ujian tidak ditemukan pada ruang ini.', 404);
+
+    const studentRows = await pool.query(`SELECT es.id AS "sessionId",es.status,es.started_at AS "startedAt",
+      u.id AS "studentId",u.full_name AS name,u.class_name AS "className"
+      FROM exam_sessions es JOIN users u ON u.id=es.student_id
+      WHERE es.exam_id=$1 AND (es.room_id=$2 OR (es.room_id IS NULL AND EXISTS(
+        SELECT 1 FROM exam_room_students ers WHERE ers.room_id=$2 AND ers.student_id=es.student_id)))
+      ORDER BY u.class_name,u.full_name`, [selected.id, roomId]);
+
+    res.json({
+      room: room.rows[0],
+      exams: exams.rows,
+      exam: selected,
+      students: studentRows.rows.map(student => ({ ...student, present: Boolean(student.startedAt) })),
+      summary: summarizeAttendance(studentRows.rows),
+      canExport: canExportAttendance(selected.status, studentRows.rows),
+    });
   }
 
   async function createRoom(req, res) {
@@ -226,5 +286,5 @@ export function createExamRoomApi({ pool, audit, pickExamQuestions }) {
     }
   }
 
-  return { listRooms, getRoom, createRoom, updateRoom, deleteRoom, createRoomBasedExam };
+  return { listRooms, getRoom, getRoomAttendance, createRoom, updateRoom, deleteRoom, createRoomBasedExam };
 }

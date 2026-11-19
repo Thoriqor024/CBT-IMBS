@@ -1,4 +1,35 @@
 .room-modal{width:min(620px,100%)}
+.room-table .table-row{grid-template-columns:minmax(170px,1.4fr) minmax(160px,1.1fr) 108px minmax(150px,1.1fr) minmax(320px,auto);min-width:960px}
+.room-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;white-space:normal}
+.attendance-modal{width:min(920px,100%);max-height:90vh;display:flex;flex-direction:column}
+.attendance-picker{margin-top:2px}
+.attendance-picker select{width:100%;height:38px;padding:0 10px;border:1px solid #dbe3e9;border-radius:8px;background:#fff;color:#34455a;font:inherit;font-size:11.5px}
+.attendance-picker select:focus{outline:0;border-color:#5aa784;box-shadow:0 0 0 3px #5aa78422}
+.attendance-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 8px}
+.attendance-stat{display:grid;gap:1px;padding:8px 11px;border:1px solid #e2e9ed;border-radius:9px;background:#fbfcfd}
+.attendance-stat span{font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8895a3}
+.attendance-stat b{font-size:18px;color:#2d4054}
+.attendance-stat.present{background:#f2f9f5;border-color:#cee6d8}
+.attendance-stat.present b{color:#23704c}
+.attendance-stat.absent{background:#fff5f4;border-color:#f0d4ce}
+.attendance-stat.absent b{color:#a13a2c}
+.attendance-meta{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.attendance-meta span{padding:4px 8px;border:1px solid #e7ecef;border-radius:999px;background:#f8fafb;color:#6e7d8d;font-size:9.5px}
+.attendance-table-wrap{overflow:auto;max-height:40vh;border:1px solid #e3e9ed;border-radius:9px}
+.attendance-table{width:100%;min-width:700px;border-collapse:collapse;font-size:10.5px;color:#465669}
+.attendance-table th{position:sticky;top:0;z-index:1;padding:8px 9px;border-bottom:1px solid #dfe7e3;background:#f1f7f4;color:#547164;font-size:9px;letter-spacing:.05em;text-align:left;text-transform:uppercase}
+.attendance-table td{padding:8px 9px;border-bottom:1px solid #eef2f4;vertical-align:middle}
+.attendance-table tr:last-child td{border-bottom:0}
+.attendance-table .number{width:34px;text-align:center;color:#8b97a5}
+.attendance-table .name{font-weight:700;color:#33465a}
+.attendance-table .time{width:62px;text-align:center;white-space:nowrap}
+.attendance-status{display:inline-block;min-width:50px;padding:2px 7px;border-radius:999px;text-align:center;font-size:9px;font-weight:700;letter-spacing:.03em}
+.attendance-status.present{background:#dff3e7;color:#17603d}
+.attendance-status.absent{background:#fde5e1;color:#9b2c21}
+.attendance-empty{padding:24px 12px!important;color:#8b97a5;text-align:center}
+.attendance-note{margin-top:8px;padding:7px 10px;border-radius:7px;background:#fff9e8;color:#876b22;font-size:10px}
+.attendance-note.export{background:#f1f8f4;color:#3f6b55}
+@media(max-width:620px){.attendance-summary{grid-template-columns:repeat(3,minmax(0,1fr));gap:5px}.attendance-stat{padding:7px}.attendance-stat b{font-size:16px}.attendance-meta span{font-size:9px}.room-actions{justify-content:flex-start}}
 .room-detail-modal{width:min(680px,100%)}
 .room-quota-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:14px 0 8px}
 .room-quota-head b{font-size:12px;color:#3f4f63}
