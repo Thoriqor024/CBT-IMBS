@@ -35,6 +35,7 @@ export default function App(){
   const [subjectReturnModal,setSubjectReturnModal]=useState('');
   const [user,setUser]=useState(null),[booting,setBooting]=useState(true),[page,setPage]=useState('Ringkasan'),[mobile,setMobile]=useState(false),[modal,setModal]=useState(''),[toast,setToast]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const [students,setStudents]=useState([]),[banks,setBanks]=useState([]),[subjects,setSubjects]=useState([]),[exams,setExams]=useState([]),[results,setResults]=useState([]),[dashboard,setDashboard]=useState({students:0,banks:0,exams:0,average:0}),[query,setQuery]=useState(''),[selectedBank,setSelectedBank]=useState(null),[questions,setQuestions]=useState([]),[selectedExam,setSelectedExam]=useState(null),[monitor,setMonitor]=useState([]),[monitorRefreshKey,setMonitorRefreshKey]=useState(0),[pinInfo,setPinInfo]=useState({available:false,issuedAt:null,expiresAt:null}),[pinValidityMinutes,setPinValidityMinutes]=useState('15'),[credentials,setCredentials]=useState([]),[selectedResult,setSelectedResult]=useState(null),[essayResponses,setEssayResponses]=useState([]),[releasedPin,setReleasedPin]=useState(''),[selectedGradeExam,setSelectedGradeExam]=useState(null),[studentGrades,setStudentGrades]=useState([]),[gradesLoading,setGradesLoading]=useState(false),[schoolSettings,setSchoolSettings]=useState(copySettings(DEFAULT_SETTINGS)),[settingsForm,setSettingsForm]=useState(copySettings(DEFAULT_SETTINGS));
+  const [studentToEdit,setStudentToEdit]=useState(null);
   const [studentForm,setStudentForm]=useState({name:'',email:'',className:DEFAULT_SETTINGS.classes[0]}),[bankForm,setBankForm]=useState({subjectId:'',grade:DEFAULT_SETTINGS.grades[0],topic:'',mcCount:'0',essayCount:'0'}),[bankQuestions,setBankQuestions]=useState({mc:[],essay:[]}),[bankStimuli,setBankStimuli]=useState([]),[bankQuestionError,setBankQuestionError]=useState(''),[examForm,setExamForm]=useState({title:'',bankId:'',bankIds:[],className:DEFAULT_SETTINGS.classes[0],classNames:DEFAULT_SETTINGS.classes.slice(0,1),mcCount:1,essayCount:0,durationMinutes:DEFAULT_SETTINGS.defaultExamDurationMinutes,roomIds:[]});
   const [sessionForm,setSessionForm]=useState({examId:'',sessionNumber:'1',date:'',startTime:'08:00',endTime:'10:00'}),[sessionError,setSessionError]=useState('');
   const [questionForm,setQuestionForm]=useState({type:'mc',prompt:'',options:['','','',''],answerKey:'',points:1,imageFile:null,imageAltText:''}),[questionFormError,setQuestionFormError]=useState('');
@@ -72,11 +73,13 @@ export default function App(){
   const saveSettings=async()=>{const mc=Number(settingsForm.mcWeightPercentage),essay=Number(settingsForm.essayWeightPercentage);if(settingsForm.mcWeightPercentage===''||settingsForm.essayWeightPercentage===''||!Number.isInteger(mc)||!Number.isInteger(essay)||mc<0||mc>100||essay<0||essay>100||mc+essay!==100){notify('Bobot PG + Essay harus bilangan bulat 0-100 dan total 100.');return;}const payload={...settingsForm,defaultExamDurationMinutes:Number(settingsForm.defaultExamDurationMinutes),violationThreshold:Number(settingsForm.violationThreshold),mcWeightPercentage:mc,essayWeightPercentage:essay};const saved=await run(()=>api('/settings',{method:'PUT',body:JSON.stringify(payload)}));if(saved){setSchoolSettings(saved);setSettingsForm(copySettings(saved));setStudentForm(form=>({...form,className:saved.classes.includes(form.className)?form.className:saved.classes[0]}));setBankForm(form=>({...form,grade:saved.grades.includes(form.grade)?form.grade:saved.grades[0]}));setExamForm(form=>({...form,className:saved.classes.includes(form.className)?form.className:saved.classes[0]}));notify('Pengaturan sekolah berhasil disimpan dan dicatat di audit.');}};
   const openExamCreate=()=>{setExamForm(form=>({...form,className:schoolSettings.classes[0],classNames:form.classNames?.length?form.classNames:[schoolSettings.classes[0]],bankIds:form.bankIds||[],durationMinutes:schoolSettings.defaultExamDurationMinutes}));setModal('exam');};
   const openBankCreate=()=>{setBankStimuli([]);setModal('bank');};
-  const openModal=name=>name==='exam'?openExamCreate():name==='bank'?openBankCreate():setModal(name);
+  const openModal=name=>name==='student'?openStudentCreate():name==='exam'?openExamCreate():name==='bank'?openBankCreate():setModal(name);
   const login=async(e,credentials)=>{e?.preventDefault();setBusy(true);setError('');try{const platformOwner=credentials.platformOwner===true;const path=platformOwner?'/platform/auth/login':'/auth/login';const payload=platformOwner?{email:credentials.email,password:credentials.password}:tenantLoginEnabled?credentials:{username:credentials.username,password:credentials.password};const r=await api(path,{method:'POST',body:JSON.stringify(payload)});if(payload.schoolCode)saveLastSchoolCode(payload.schoolCode);if(r.user?.role==='student')try{localStorage.setItem('imbs_cached_student',JSON.stringify(r.user));}catch{}setUser(r.user);}catch(err){setError(err.message);}finally{setBusy(false);}};
   const logout=async()=>{await api('/auth/logout',{method:'POST'}).catch(()=>{});try{localStorage.removeItem('imbs_cached_student');localStorage.removeItem('imbs_active_exam_session');}catch{}setUser(null);setPage('Ringkasan');};
   const saveOwnProfile=async changes=>{setProfileFormError('');setBusy(true);try{const result=await api('/account/profile',{method:'PUT',body:JSON.stringify(changes)});setUser(current=>current?{...current,...result}:current);setModal('');notify(result.passwordChanged?'Profil diperbarui. Sesi login lain telah dicabut.':'Nama profil diperbarui.');}catch(err){setProfileFormError(err.message||'Profil tidak dapat diperbarui.');}finally{setBusy(false);}};
-  const addStudent=async()=>{const r=await run(()=>api('/students',{method:'POST',body:JSON.stringify(studentForm)}));if(r){setCredentials([r]);setStudentForm({name:'',email:'',className:schoolSettings.classes[0]});setModal('credentials');await loadAll();notify('Akun siswa dibuat. Simpan token sekarang; token tidak bisa dibaca ulang.');}};
+  const openStudentCreate=()=>{setStudentToEdit(null);setStudentForm({name:'',email:'',className:schoolSettings.classes[0]});setModal('student');};
+  const editStudent=student=>{setStudentToEdit(student);setStudentForm({name:student.name,email:'',className:student.className});setModal('student');};
+  const saveStudent=async()=>{const name=studentForm.name.trim();if(!name){notify('Nama siswa wajib diisi.');return;}if(studentToEdit){const r=await run(()=>api('/students/'+studentToEdit.id,{method:'PUT',body:JSON.stringify({name,className:studentForm.className})}));if(r){setStudentToEdit(null);setStudentForm({name:'',email:'',className:schoolSettings.classes[0]});setModal('');await loadAll();notify('Data siswa diperbarui.');}return;}const r=await run(()=>api('/students',{method:'POST',body:JSON.stringify({...studentForm,name})}));if(r){setCredentials([r]);setStudentForm({name:'',email:'',className:schoolSettings.classes[0]});setModal('credentials');await loadAll();notify('Akun siswa dibuat. Simpan token sekarang; token tidak bisa dibaca ulang.');}};
   const importStudents=async file=>{if(!file)return;await run(async()=>{let rows;if(file.name.toLowerCase().endsWith('.csv'))rows=parseCsv(await file.text());else {const sheets=await readXlsxFile(file);rows=Array.isArray(sheets?.[0]?.data)?sheets[0].data:sheets;}if(rows.length<2)throw new Error('File belum berisi baris siswa.');const headers=rows[0].map(x=>String(x).toLowerCase().trim());const ni=headers.findIndex(x=>['nama','nama siswa','name'].includes(x)),ei=headers.findIndex(x=>['email','email siswa'].includes(x)),ci=headers.findIndex(x=>['kelas','class'].includes(x));if(ni<0||ci<0)throw new Error('Header wajib berisi nama siswa dan kelas.');const mapped=rows.slice(1).filter(x=>String(x[ni]||'').trim()).map(x=>({name:String(x[ni]).trim(),email:ei>=0?String(x[ei]||'').trim():'',className:String(x[ci]||'').trim()}));if(!mapped.length)throw new Error('Tidak ada nama siswa valid di file.');const r=await api('/students/import',{method:'POST',body:JSON.stringify({rows:mapped})});setCredentials(r.students);setModal('credentials');await loadAll();notify(`${r.students.length} siswa diimpor; unduh token sebelum menutup dialog.`);});};
   const importTeachers=async file=>{if(!file)return;await run(async()=>{let rows;if(file.name.toLowerCase().endsWith('.csv'))rows=parseCsv(await file.text());else {const sheets=await readXlsxFile(file);rows=Array.isArray(sheets?.[0]?.data)?sheets[0].data:sheets;}if(rows.length<2)throw new Error('File belum berisi baris guru.');const headers=rows[0].map(x=>String(x).toLowerCase().trim());const ni=headers.findIndex(x=>['nama','name'].includes(x)),ui=headers.findIndex(x=>['username','username akses'].includes(x)),pi=headers.findIndex(x=>['password','kata sandi','sandi'].includes(x)),ci=headers.findIndex(x=>['kelas','class'].includes(x)),si=headers.findIndex(x=>['mata pelajaran','subject','mapel'].includes(x)),ei=headers.findIndex(x=>['email','email guru'].includes(x));if(ni<0||ui<0||pi<0||ci<0||si<0)throw new Error('Header wajib berisi nama, username, password, kelas, dan mata pelajaran.');const mapped=rows.slice(1).filter(x=>String(x[ni]||'').trim()&&String(x[ui]||'').trim()&&String(x[pi]||'').trim()).map(x=>({name:String(x[ni]).trim(),username:String(x[ui]).trim(),password:String(x[pi]).trim(),className:String(x[ci]||'').trim(),subjectName:String(x[si]||'').trim(),email:ei>=0?String(x[ei]||'').trim():undefined}));if(!mapped.length)throw new Error('Tidak ada guru valid di file.');const r=await api('/teachers/import',{method:'POST',body:JSON.stringify({rows:mapped})});setTeacherList(current=>[...r.teachers,...current]);setModal('');await loadAll();notify(`${r.teachers.length} guru diimpor.`);});};
   const setBankQuestionCount=(type,value)=>{const field=type==='mc'?'mcCount':'essayCount';setBankForm(form=>({...form,[field]:value}));if(value===''||!/^\d+$/.test(value))return;const count=Number(value);if(count>1000)return;const current=bankQuestions[type];if(count<current.length&&current.slice(count).some(isBankQuestionFilled)&&!window.confirm(`${current.length-count} form yang sudah berisi akan dihapus. Lanjutkan?`)){setBankForm(form=>({...form,[field]:String(current.length)}));return;}setBankQuestions(currentQuestions=>({...currentQuestions,[type]:resizeBankQuestions(type,currentQuestions[type],count)}));setBankQuestionError('');};
@@ -329,8 +332,10 @@ export default function App(){
               quota={dashboard?.quota}
               query={query}
               setQuery={setQuery}
-              onCreate={() => setModal("student")}
+              isAdmin={isAdmin}
+              onCreate={openStudentCreate}
               onImport={() => setModal("import")}
+              onEdit={editStudent}
               onDelete={deleteStudent}
               onTemplate={downloadStudentImportTemplate}
             />
@@ -471,10 +476,11 @@ export default function App(){
       </main>
       {modal && (
         <Modal
-          title={modal === "profile" ? "Edit profil akun" : modal === "teacher-add" ? "Tambah staf" : modal === "teacher-import" ? "Import guru" : modal === "teacher-access" ? "Atur akses staf" : modal === "subject" ? (subjectToEdit ? "Edit mata pelajaran" : "Tambah mata pelajaran") : modalTitle(modal, selectedBank, selectedExam)}
+          title={modal === "profile" ? "Edit profil akun" : modal === "student" ? (studentToEdit ? "Edit siswa" : "Tambah siswa") : modal === "teacher-add" ? "Tambah staf" : modal === "teacher-import" ? "Import guru" : modal === "teacher-access" ? "Atur akses staf" : modal === "subject" ? (subjectToEdit ? "Edit mata pelajaran" : "Tambah mata pelajaran") : modalTitle(modal, selectedBank, selectedExam)}
           className={modal === "bank" ? "question-bank-modal" : modal === "exam" ? "exam-create-modal" : (modal === "teacher-add" || modal === "teacher-access") ? "teacher-modal" : modal === "session" ? "session-modal" : ""}
           onClose={() => {
             setModal("");
+            setStudentToEdit(null);
             setSubjectToEdit(null);
             setError("");
             setReleasedPin("");
@@ -496,6 +502,7 @@ export default function App(){
                 Nama lengkap siswa
                 <input
                   autoFocus
+                  maxLength={120}
                   value={studentForm.name}
                   onChange={(e) =>
                     setStudentForm({ ...studentForm, name: e.target.value })
@@ -503,7 +510,7 @@ export default function App(){
                   placeholder="Contoh: Ahmad Fadhil"
                 />
               </label>
-              {tenantLoginEnabled && <label>Email login siswa<input type="email" autoComplete="email" value={studentForm.email} onChange={event=>setStudentForm({...studentForm,email:event.target.value})} required/></label>}
+              {tenantLoginEnabled && !studentToEdit && <label>Email login siswa<input type="email" autoComplete="email" value={studentForm.email} onChange={event=>setStudentForm({...studentForm,email:event.target.value})} required/></label>}
               <label>
                 Kelas
                 <select
@@ -521,14 +528,16 @@ export default function App(){
                 </select>
               </label>
               <div className="form-note">
-                <ShieldCheck size={16} /> Username unik dan token awal akan
-                dibuat server. Token ditampilkan satu kali.
+                <ShieldCheck size={16} />
+                {studentToEdit
+                  ? <>Username <b>{studentToEdit.username}</b> tidak berubah. Perubahan hanya pada nama dan kelas.</>
+                  : <>Username unik dan token awal akan dibuat server. Token ditampilkan satu kali.</>}
               </div>
               <ModalActions
-                close={() => setModal("")}
-                save={addStudent}
+                close={() => { setModal(""); setStudentToEdit(null); }}
+                save={saveStudent}
                 busy={busy}
-                label="Buat akun siswa"
+                label={studentToEdit ? "Simpan perubahan" : "Buat akun siswa"}
               />
             </>
           )}
@@ -1173,8 +1182,10 @@ function StudentsPage({
   quota,
   query,
   setQuery,
+  isAdmin,
   onCreate,
   onImport,
+  onEdit,
   onDelete,
   onTemplate,
 }) {
@@ -1231,10 +1242,21 @@ function StudentsPage({
               <span>
                 <i className="status-dot" /> Aktif
               </span>
-              <span>
+              <span className="student-row-actions">
+                {isAdmin && (
+                  <button
+                    className="row-action"
+                    title="Edit siswa"
+                    aria-label={`Edit data ${s.name}`}
+                    onClick={() => onEdit(s)}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                )}
                 <button
                   className="row-action"
                   title="Hapus siswa"
+                  aria-label={`Hapus siswa ${s.name}`}
                   onClick={() => onDelete(s)}
                 >
                   <Trash2 size={15} />

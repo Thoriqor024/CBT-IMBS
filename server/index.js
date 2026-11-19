@@ -1015,6 +1015,25 @@ app.post('/api/students',allow('admin'),asyncRoute(async(req,res)=>{
     res.status(201).json({...q.rows[0],token});
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }));
+app.put('/api/students/:id',allow('admin'),asyncRoute(async(req,res)=>{
+  const id=Number(req.params.id);
+  if(!Number.isSafeInteger(id)||id<1)return res.status(400).json({error:'ID siswa tidak valid.'});
+  const name=String(req.body?.name||'').trim(),className=String(req.body?.className||'').trim();
+  if(!name||name.length>120)return res.status(400).json({error:'Nama siswa wajib diisi dan maksimal 120 karakter.'});
+  if(!className)return res.status(400).json({error:'Kelas siswa wajib diisi.'});
+  const settings=await pool.query('SELECT classes FROM school_settings WHERE id=1');
+  if(!(settings.rows[0]?.classes||[]).includes(className))return res.status(400).json({error:'Pilih kelas yang tersedia pada Pengaturan sekolah.'});
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const before=await client.query("SELECT id,username,full_name AS name,class_name AS \"className\" FROM users WHERE id=$1 AND role='student' FOR UPDATE",[id]);
+    if(!before.rowCount)throw Object.assign(new Error('Siswa tidak ditemukan.'),{status:404});
+    const updated=await client.query('UPDATE users SET full_name=$2,class_name=$3 WHERE id=$1 RETURNING id,username,full_name AS name,class_name AS "className",active',[id,name,className]);
+    await audit(client,req.session.user.id,'student.update',{studentId:id,username:before.rows[0].username,previous:{name:before.rows[0].name,className:before.rows[0].className},next:{name,className}});
+    await client.query('COMMIT');
+    res.json(updated.rows[0]);
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+}));
 app.post('/api/students/import',allow('admin'),asyncRoute(async(req,res)=>{
   const rows=req.body.rows;
   if(!Array.isArray(rows)||rows.length>500)return res.status(400).json({error:'Data harus berisi maksimal 500 baris.'});

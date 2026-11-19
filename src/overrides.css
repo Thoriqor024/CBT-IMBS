@@ -81,6 +81,8 @@
 .student-name { font-size: 14px !important; font-weight: 600 !important; color: #1e293b !important; gap: 10px !important; }
 .mini-avatar { width: 32px !important; height: 32px !important; font-size: 12px !important; font-weight: 700 !important; }
 .mono { font-size: 12.5px !important; color: #64748b !important; }
+.student-row-actions { display: flex !important; align-items: center !important; justify-content: flex-end !important; gap: 2px !important; }
+.student-row-actions .row-action:hover { color: #0f766e !important; background: #f0fdfa !important; border-radius: 7px !important; }
 
 /* Subject bars */
 .subject-bars { gap: 14px !important; margin-top: 16px !important; }
