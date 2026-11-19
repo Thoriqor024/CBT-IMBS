@@ -14,6 +14,7 @@ export const DATABASE_MIGRATIONS = [
   { version: 8, name: 'bank-teachers', file: './migrations/008_bank-teachers.sql' },
   { version: 9, name: 'reconcile-bank-teacher-links', file: './migrations/009_reconcile-bank-teacher-links.sql' },
   { version: 10, name: 'exam-sessions', file: './migrations/010_exam-sessions.sql' },
+  { version: 11, name: 'class-grade-matching', file: './migrations/011_class-grade-matching.sql' },
 ];
 export const LATEST_DATABASE_MIGRATION_VERSION = DATABASE_MIGRATIONS.at(-1).version;
 

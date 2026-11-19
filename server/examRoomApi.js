@@ -167,13 +167,13 @@ export function createExamRoomApi({ pool, audit, pickExamQuestions }) {
       const bankGrades = [...new Set(banks.rows.map(bank => bank.grade))];
       const students = participants.rows.map(row => ({ ...row, grade: matchBankGrade(row.className, bankGrades) }));
       const unmatched = students.find(student => !student.grade);
-      if (unmatched) throw httpError(`Kelas "${unmatched.className}" belum memiliki bank soal pada mata pelajaran terpilih.`);
+      if (unmatched) throw httpError(`Kelas "${unmatched.className}" tidak cocok dengan tingkat bank soal terpilih (${bankGrades.join(', ')}). Pilih bank yang sesuai tingkat kelas tersebut.`);
 
       const examSubjectIds = [...new Set(banks.rows.map(bank => Number(bank.subject_id)))];
       if (req.session.user.role === 'teacher') {
         const accessibleBanks = await client.query(`SELECT b.id FROM question_banks b WHERE b.id=ANY($1::bigint[]) AND (
           EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source IN ('auto','manual'))
-          OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-')))
+          OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND class_grade_matches(ta.class_name,b.grade))
             AND NOT EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source='excluded')))`,[banks.rows.map(bank => bank.id), req.session.user.id]);
         if (accessibleBanks.rowCount !== banks.rowCount) throw httpError('Anda tidak memiliki akses ke salah satu bank soal terpilih.', 403);
         const access = await client.query('SELECT subject_id AS "subjectId",class_name AS "className" FROM teacher_access WHERE teacher_id=$1', [req.session.user.id]);

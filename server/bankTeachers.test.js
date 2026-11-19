@@ -5,6 +5,9 @@ import { gradeMatchesClass } from './bankTeachers.js';
 test('matches teacher classes to the bank grade', () => {
   assert.equal(gradeMatchesClass('VII', 'VII A'), true);
   assert.equal(gradeMatchesClass('VII', 'Kelas VII B'), true);
+  assert.equal(gradeMatchesClass('1', 'KELAS 1A'), true);
+  assert.equal(gradeMatchesClass('10', 'KELAS 10A'), true);
+  assert.equal(gradeMatchesClass('1', 'KELAS 10A'), false);
   assert.equal(gradeMatchesClass('VII', 'VII-A'), true);
   assert.equal(gradeMatchesClass('VIII', 'VIII A'), true);
   assert.equal(gradeMatchesClass('VII', 'VIII A'), false);

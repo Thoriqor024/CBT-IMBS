@@ -9,6 +9,13 @@ test('maps assigned class names to the longest configured grade prefix', () => {
   );
 });
 
+test('maps class names with attached section letters to their grade', () => {
+  assert.deepEqual(
+    gradesForTeacherClasses(['KELAS 1A', 'KELAS 10B'], ['1', '10']),
+    ['1', '10'],
+  );
+});
+
 test('requires both the assigned subject and exact class for teacher access', () => {
   const grants = [
     { subjectId: 2, className: 'VII A' },

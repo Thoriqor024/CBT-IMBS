@@ -284,14 +284,13 @@ async function teacherAssignments(userId, client=pool) {
 }
 async function teacherCanAccessBankScope(userId,subjectId,grade,client=pool) {
   const result=await client.query(`SELECT EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$1 AND ta.subject_id=$2
-    AND left(ta.class_name,length($3))=$3 AND (length(ta.class_name)=length($3) OR substring(ta.class_name,length($3)+1,1) IN (' ','-'))) AS allowed`,[userId,subjectId,grade]);
+    AND class_grade_matches(ta.class_name,$3)) AS allowed`,[userId,subjectId,grade]);
   return result.rows[0].allowed;
 }
 async function teacherCanAccessBank(userId,bankId,client=pool) {
   const result=await client.query(`SELECT EXISTS(SELECT 1 FROM question_banks b WHERE b.id=$1 AND (
     EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source IN ('auto','manual'))
-    OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade
-      AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-')))
+    OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND class_grade_matches(ta.class_name,b.grade))
       AND NOT EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source='excluded')))) AS allowed`,[bankId,userId]);
   return result.rows[0].allowed;
 }
@@ -910,8 +909,7 @@ app.put('/api/settings',allow('admin'),asyncRoute(async(req,res)=>{
     if(removedGrades.length){
       const used=await client.query(`SELECT EXISTS(SELECT 1 FROM question_banks WHERE grade=ANY($1::text[])) OR EXISTS(
         SELECT 1 FROM teacher_access ta,unnest($1::text[]) AS removed(grade)
-        WHERE left(ta.class_name,length(removed.grade))=removed.grade
-          AND (length(ta.class_name)=length(removed.grade) OR substring(ta.class_name,length(removed.grade)+1,1) IN (' ','-'))
+        WHERE class_grade_matches(ta.class_name,removed.grade)
       ) AS used`,[removedGrades]);
       if(used.rows[0].used)throw Object.assign(new Error(`Tingkat ${removedGrades.join(', ')} masih dipakai bank soal atau akses guru.`),{status:409});
     }
@@ -1279,9 +1277,9 @@ app.put('/api/teachers/:id/access',allow('admin'),asyncRoute(async(req,res)=>{
 app.get('/api/banks',allow('admin','teacher'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT b.id,b.grade,b.topic,s.id AS subject_id,s.name AS subject,s.language_code AS "languageCode",s.text_direction AS "textDirection",count(q.id)::int AS count,count(q.id) FILTER(WHERE q.type IN ('mc', 'complex_mc'))::int AS mc,count(q.id) FILTER(WHERE q.type='essay')::int AS essay,(SELECT count(*)::int FROM exams e WHERE e.bank_id=b.id) AS "examCount",(SELECT count(*)::int FROM exam_sessions es JOIN exams e ON e.id=es.exam_id WHERE e.bank_id=b.id) AS "sessionCount",COALESCE((SELECT jsonb_agg(jsonb_build_object('id',t.id,'name',t.full_name) ORDER BY t.full_name)
       FROM users t WHERE t.role='teacher' AND t.active=TRUE AND (
         EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=t.id AND qbt.source IN ('auto','manual'))
-        OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=t.id AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-')))
+        OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=t.id AND ta.subject_id=b.subject_id AND class_grade_matches(ta.class_name,b.grade))
           AND NOT EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=t.id AND qbt.source='excluded'))
-      )),'[]'::jsonb) AS teachers FROM question_banks b JOIN subjects s ON s.id=b.subject_id LEFT JOIN questions q ON q.bank_id=b.id WHERE ($1='admin' OR EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source IN ('auto','manual')) OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-'))) AND NOT EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source='excluded'))) GROUP BY b.id,s.id ORDER BY b.created_at DESC`,[req.session.user.role,req.session.user.id]);res.json(q.rows);}));
+      )),'[]'::jsonb) AS teachers FROM question_banks b JOIN subjects s ON s.id=b.subject_id LEFT JOIN questions q ON q.bank_id=b.id WHERE ($1='admin' OR EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source IN ('auto','manual')) OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND class_grade_matches(ta.class_name,b.grade)) AND NOT EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source='excluded'))) GROUP BY b.id,s.id ORDER BY b.created_at DESC`,[req.session.user.role,req.session.user.id]);res.json(q.rows);}));
 app.delete('/api/banks/:id',allow('admin'),asyncRoute(async(req,res)=>{
   const client=await pool.connect();
   let mediaFiles=[];
@@ -2265,7 +2263,7 @@ app.get('/api/dashboard',allow('admin','teacher'),asyncRoute(async(req,res)=>{
   const params=[req.session.user.role,req.session.user.id];
   const [students,banks,exams,results]=await Promise.all([
     pool.query("SELECT count(*)::int n FROM users u WHERE u.role='student' AND u.active AND ($1='admin' OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.class_name=u.class_name))",params),
-    pool.query("SELECT count(*)::int n FROM question_banks b WHERE ($1='admin' OR EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source IN ('auto','manual')) OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-'))) AND NOT EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source='excluded')))",params),
+    pool.query("SELECT count(*)::int n FROM question_banks b WHERE ($1='admin' OR EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source IN ('auto','manual')) OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND class_grade_matches(ta.class_name,b.grade)) AND NOT EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source='excluded')))",params),
     pool.query("SELECT count(*)::int n FROM exams e JOIN question_banks b ON b.id=e.bank_id WHERE e.status IN ('active','scheduled') AND ($1='admin' OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*')))))",params),
     pool.query("SELECT round(avg(es.final_score),1) n FROM exam_sessions es JOIN exams e ON e.id=es.exam_id JOIN question_banks b ON b.id=e.bank_id WHERE es.final_score IS NOT NULL AND ($1='admin' OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*')))))",params),
   ]);

@@ -1,17 +1,6 @@
-const escapeRegex = value => String(value).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+import { matchBankGrade } from './gradeMatching.js';
 
-export function matchBankGrade(className, grades) {
-  const ordered = [...new Set((grades || []).map(grade => String(grade).trim()).filter(Boolean))]
-    .sort((left, right) => right.length - left.length);
-  const normalized = String(className || '').trim();
-  if (!normalized || !ordered.length) return null;
-  const stripped = normalized.replace(/^(kelas|kls|class)\s*[-:]?\s*/i, '');
-  const prefixMatch = ordered.find(grade => stripped === grade
-    || stripped.startsWith(grade + ' ')
-    || stripped.startsWith(grade + '-'));
-  if (prefixMatch) return prefixMatch;
-  return ordered.find(grade => new RegExp('(^|[^a-zA-Z0-9])' + escapeRegex(grade) + '([^a-zA-Z0-9]|$)', 'i').test(normalized)) || null;
-}
+export { matchBankGrade };
 
 // Menormalkan kuota per kelas dari form ruang ujian sebelum plotting.
 export function normalizeRoomQuotas(rawQuotas, allowedClasses) {

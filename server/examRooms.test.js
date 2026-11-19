@@ -28,6 +28,10 @@ test('rejects invalid quotas and an all-zero allocation', () => {
 test('matches participant class names to the longest configured bank grade', () => {
   assert.equal(matchBankGrade('VII A', ['VII', 'VIII']), 'VII');
   assert.equal(matchBankGrade('KELAS 8-A', ['7', '8']), '8');
+  assert.equal(matchBankGrade('KELAS 1A', ['1', '2']), '1');
+  assert.equal(matchBankGrade('kelas 10b', ['1', '10']), '10');
+  assert.equal(matchBankGrade('11A', ['1', '11']), '11');
+  assert.equal(matchBankGrade('11A', ['1']), null);
   assert.equal(matchBankGrade('Kelas VII A', ['VII', 'VIII']), 'VII');
   assert.equal(matchBankGrade('VII A', ['VII A', 'VII']), 'VII A');
   assert.equal(matchBankGrade('X IPA 1', ['VII', 'VIII']), null);

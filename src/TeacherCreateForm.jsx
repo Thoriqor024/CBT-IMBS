@@ -7,8 +7,12 @@ function bankMatchesAccess(bank, classes = [], subjectIds = []) {
   const grade = String(bank.grade || '').trim();
   if (!grade) return false;
   return classes.some(className => {
-    const normalized = String(className).trim().replace(/^(kelas|kls|class)\s*[-:]?\s*/i, '');
-    return normalized === grade || normalized.startsWith(grade + ' ') || normalized.startsWith(grade + '-');
+    const normalized = String(className).trim().replace(/^(kelas|kls|class)\s*[-:]?\s*/i, '').toLowerCase();
+    const gradeKey = grade.toLowerCase();
+    if (normalized === gradeKey) return true;
+    if (!normalized.startsWith(gradeKey)) return false;
+    const next = normalized.charAt(gradeKey.length);
+    return next === ' ' || next === '-' || (/\d$/.test(gradeKey) && /[a-z]/.test(next));
   });
 }
 

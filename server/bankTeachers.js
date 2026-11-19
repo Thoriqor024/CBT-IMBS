@@ -1,13 +1,9 @@
-const gradePrefix = grade => `left(ta.class_name,length(${grade}))=${grade}
-  AND (length(ta.class_name)=length(${grade}) OR substring(ta.class_name,length(${grade})+1,1) IN (' ','-'))`;
+import { classMatchesGrade } from './gradeMatching.js';
+
+const gradePrefix = grade => `class_grade_matches(ta.class_name,${grade})`;
 
 export function gradeMatchesClass(grade, className) {
-  const normalizedGrade = String(grade || '').trim();
-  const normalizedClass = String(className || '').trim().replace(/^(kelas|kls|class)\s*[-:]?\s*/i, '');
-  if (!normalizedGrade || !normalizedClass) return false;
-  return normalizedClass === normalizedGrade
-    || normalizedClass.startsWith(normalizedGrade + ' ')
-    || normalizedClass.startsWith(normalizedGrade + '-');
+  return classMatchesGrade(className, grade);
 }
 
 // Hubungkan bank baru ke semua guru yang mengampu mapel dan tingkat yang sama.
