@@ -107,6 +107,7 @@ export default function StudentPortal({user,onLogout}) {
           <i className="portal-exam-icon"><BookOpen size={19}/></i>
           <div className="portal-exam-info"><span className="portal-exam-state">{portalStatus(exam.sessionStatus,exam.examStatus)}</span>
             <h3>{exam.title}</h3><p>{exam.subject} Â· {exam.grade ? `Kelas ${exam.grade}  ` : ''}{exam.topic}  {exam.durationMinutes} menit</p>
+            {exam.sessionDate&&<small className="portal-schedule"><Clock3 size={12}/> {sessionScheduleLabel(exam)}</small>}
             {exam.sessionStatus==='not_started'&&exam.examStatus==='active'&&!exam.pinReady&&<small className="portal-warning">Menunggu PIN dari pengawas.</small>}
           </div>
           {exam.sessionStatus==='not_started'&&exam.examStatus==='active'&&<button className="portal-start" disabled={!exam.pinReady} onClick={()=>selectExam(exam)}><LockKeyhole size={15}/> Masukkan PIN</button>}
@@ -121,6 +122,7 @@ export default function StudentPortal({user,onLogout}) {
         <button className="exam-preflight-close" onClick={()=>setSelectedExam(null)} aria-label="Tutup">Ã—</button>
         <div className="preflight-icon"><ShieldCheck size={21}/></div><h2 id="preflight-title">Persiapan ujian</h2>
         <p>{selectedExam.title} Â· {selectedExam.durationMinutes} menit</p>
+        {selectedExam.sessionDate&&<p className="portal-schedule preflight-schedule"><Clock3 size={12}/> {sessionScheduleLabel(selectedExam)}</p>}
         {selectedExam.sessionStatus==='not_started'&&<label className="preflight-pin">PIN dari pengawas<input autoFocus inputMode="numeric" maxLength={6} value={entryPin} onChange={e=>setEntryPin(e.target.value.replace(/\D/g,'').slice(0,6))} placeholder="MASUKAN PIN"/></label>}
         <div className={`preflight-screen ${screenState==='multiple'?'is-blocked':screenState==='unverified'||screenState==='fullscreen'?'is-unknown':''}`}>
           {screenState==='multiple'?<MonitorX size={18}/>:screenState==='checking'?<RefreshCw size={18}/>:<MonitorCheck size={18}/>}
@@ -661,7 +663,10 @@ function portalStatus(sessionStatus,examStatus){
   if(sessionStatus==='locked')return 'TERKUNCI';
   if(sessionStatus==='completed')return 'SELESAI';
   if(sessionStatus==='in_progress')return 'SEDANG DIKERJAKAN';
-  return examStatus==='active'?'TERSEDIA':'Menunggu jadwal';
+  if(examStatus==='active')return 'TERSEDIA';
+  return examStatus==='scheduled'?'DIJADWALKAN':'Menunggu jadwal';
 }
+function formatSessionDate(value){if(!value)return '';const [y,m,d]=String(value).slice(0,10).split('-').map(Number);const date=new Date(y,(m||1)-1,d||1);return Number.isNaN(date.getTime())?'':date.toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
+function sessionScheduleLabel(exam){return exam?.sessionDate?`Sesi ${exam.sessionNumber} · ${formatSessionDate(exam.sessionDate)} · ${exam.sessionStart}–${exam.sessionEnd}`:'';}
 
 function formatTime(value){const seconds=Math.max(0,Number(value)||0);return `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;}

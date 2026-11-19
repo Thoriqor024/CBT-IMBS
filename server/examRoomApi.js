@@ -164,6 +164,16 @@ export function createExamRoomApi({ pool, audit, pickExamQuestions }) {
       const unmatched = students.find(student => !student.grade);
       if (unmatched) throw httpError(`Kelas "${unmatched.className}" belum memiliki bank soal pada mata pelajaran terpilih.`);
 
+      if (req.session.user.role === 'teacher') {
+        const access = await client.query('SELECT subject_id AS "subjectId",class_name AS "className" FROM teacher_access WHERE teacher_id=$1', [req.session.user.id]);
+        const pairs = new Set(access.rows.map(row => `${Number(row.subjectId)}:${row.className}`));
+        const examClasses = [...new Set(students.map(student => student.className))];
+        for (const subjectId of subjectIds) {
+          const blockedClass = examClasses.find(className => !pairs.has(`${subjectId}:${className}`));
+          if (blockedClass) throw httpError(`Anda tidak memiliki akses mata pelajaran terpilih untuk kelas "${blockedClass}". Hubungi admin untuk menyesuaikan akses guru.`, 403);
+        }
+      }
+
       for (const grade of new Set(students.map(student => student.grade))) {
         const gradeBankIds = banks.rows.filter(bank => bank.grade === grade).map(bank => bank.id);
         const stock = await client.query(`SELECT count(*) FILTER(WHERE type IN ('mc','complex_mc'))::int AS mc,
