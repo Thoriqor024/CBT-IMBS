@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { KeyRound, X } from 'lucide-react';
+import PasswordInput from './PasswordInput.jsx';
 
 export default function ProfileEditForm({ user, busy, error, onSave, onCancel }) {
   const [name, setName] = useState(user.name || '');
@@ -19,13 +20,13 @@ export default function ProfileEditForm({ user, busy, error, onSave, onCancel })
       <input autoFocus maxLength="120" autoComplete="name" value={name} onChange={event => setName(event.target.value)} required/>
     </label>
     <label>Password saat ini
-      <input type="password" autoComplete="current-password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)}/>
+      <PasswordInput autoComplete="current-password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)}/>
     </label>
     <label>Password baru
-      <input type="password" autoComplete="new-password" minLength="8" maxLength="128" value={newPassword} onChange={event => setNewPassword(event.target.value)}/>
+      <PasswordInput autoComplete="new-password" minLength="8" maxLength="128" value={newPassword} onChange={event => setNewPassword(event.target.value)}/>
     </label>
     <label>Konfirmasi password baru
-      <input type="password" autoComplete="new-password" minLength="8" maxLength="128" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)}/>
+      <PasswordInput autoComplete="new-password" minLength="8" maxLength="128" value={confirmPassword} onChange={event => setConfirmPassword(event.target.value)}/>
     </label>
     <small><KeyRound size={13}/> Kosongkan semua kolom password jika hanya ingin mengubah nama.</small>
     {error && <div className="question-form-error" role="alert">{error}</div>}

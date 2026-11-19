@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Check, KeyRound, Plus, Search, X } from 'lucide-react';
+import PasswordInput from './PasswordInput.jsx';
 
 function bankMatchesAccess(bank, classes = [], subjectIds = []) {
   const subjectId = String(bank.subjectId ?? bank.subject_id ?? '');
@@ -133,7 +134,7 @@ export default function TeacherCreateForm({ teacher, classes, subjects, exams = 
         <label className="staff-field staff-field-wide">Nama lengkap<input autoFocus maxLength="120" value={name} onChange={event => setName(event.target.value)} placeholder="Nama guru" required /></label>
         <label className="staff-field">Username akses<input autoComplete="off" maxLength="40" value={username} onChange={event => setUsername(event.target.value)} placeholder="Contoh: guru.matematika" pattern="[A-Za-z0-9._-]{3,40}" required /><small>Dipakai untuk masuk ke platform, 3–40 karakter.</small></label>
         {tenancyEnabled && <label className="staff-field">Email login<input type="email" autoComplete="email" maxLength="254" value={email} onChange={event => setEmail(event.target.value)} required /></label>}
-        <label className="staff-field">Password awal<input type="password" autoComplete="new-password" minLength="8" maxLength="128" value={password} onChange={event => setPassword(event.target.value)} required /><small>Minimal 8 karakter.</small></label>
+        <label className="staff-field">Password awal<PasswordInput autoComplete="new-password" minLength="8" maxLength="128" value={password} onChange={event => setPassword(event.target.value)} required /><small>Minimal 8 karakter.</small></label>
       </div>
     </section>}
 

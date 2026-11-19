@@ -84,6 +84,10 @@
 .student-row-actions { display: flex !important; align-items: center !important; justify-content: flex-end !important; gap: 2px !important; }
 .student-row-actions .row-action:hover { color: #0f766e !important; background: #f0fdfa !important; border-radius: 7px !important; }
 .student-select-all { display: flex !important; align-items: center !important; gap: 8px !important; }
+.password-input { position: relative !important; display: block !important; width: 100% !important; }
+.password-input > input { width: 100% !important; padding-right: 42px !important; }
+.password-toggle { position: absolute !important; top: 50% !important; right: 7px !important; transform: translateY(-50%) !important; display: inline-flex !important; align-items: center !important; justify-content: center !important; width: 27px !important; height: 27px !important; padding: 0 !important; border: 0 !important; border-radius: 6px !important; background: transparent !important; color: #7b8794 !important; cursor: pointer !important; }
+.password-toggle:hover, .password-toggle:focus-visible { background: #eef4f1 !important; color: #1f6b52 !important; outline: 0 !important; }
 .student-select, .student-select-all input { width: 15px !important; height: 15px !important; margin: 0 !important; accent-color: #258a63 !important; flex: none !important; cursor: pointer !important; }
 .bulk-selection-bar { display: flex !important; align-items: center !important; justify-content: space-between !important; gap: 12px !important; margin-top: 10px !important; padding: 9px 12px !important; border: 1px solid #d7efe5 !important; border-radius: 9px !important; background: #f2fbf7 !important; color: #1f6b52 !important; font-size: 12.5px !important; }
 .bulk-selection-bar .button-row { display: flex !important; gap: 8px !important; }

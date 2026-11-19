@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ArrowUpRight, CircleAlert, KeyRound } from 'lucide-react';
+import PasswordInput from './PasswordInput.jsx';
 
 export default function PlatformOwnerLogin({ onLogin, busy, error }) {
   const [email, setEmail] = useState('');
@@ -17,7 +18,7 @@ export default function PlatformOwnerLogin({ onLogin, busy, error }) {
         <p>Gunakan email pemilik control-plane.</p>
         <form onSubmit={event => onLogin(event, { platformOwner: true, email, password })}>
           <label>Email pemilik<input type="email" autoFocus value={email} onChange={event => setEmail(event.target.value)} autoComplete="username" required /></label>
-          <label>Kata sandi<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" required /></label>
+          <label>Kata sandi<PasswordInput value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" required /></label>
           {error && <div className="login-error"><CircleAlert size={15} />{error}</div>}
           <button className="primary login-submit" disabled={busy || !email || !password}>
             {busy ? 'Memeriksa...' : 'Masuk sebagai pemilik'}<ArrowUpRight size={16} />
