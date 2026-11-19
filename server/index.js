@@ -992,7 +992,10 @@ app.delete('/api/subjects/:id',allow('admin'),asyncRoute(async(req,res)=>{
   await audit(pool,req.session.user.id,'subject.delete',{subjectId:id,name:q.rows[0].name});
   res.json({ok:true,id});
 }));
-app.get('/api/students',allow('admin','teacher'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT id,username,full_name AS name,class_name AS "className",active FROM users u
+app.get('/api/students',allow('admin','teacher'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT id,username,full_name AS name,class_name AS "className",active,
+  COALESCE((SELECT jsonb_agg(jsonb_build_object('id',er.id,'name',er.name,'className',ers.class_name) ORDER BY er.name)
+    FROM exam_room_students ers JOIN exam_rooms er ON er.id=ers.room_id WHERE ers.student_id=u.id),'[]'::jsonb) AS rooms
+  FROM users u
   WHERE role='student' AND ($1='' OR lower(full_name||' '||username||' '||coalesce(class_name,'')) LIKE '%'||lower($1)||'%')
     AND ($2='admin' OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$3 AND ta.class_name=u.class_name)) ORDER BY full_name`,[String(req.query.search||''),req.session.user.role,req.session.user.id]);res.json(q.rows);}));
 app.post('/api/students',allow('admin'),asyncRoute(async(req,res)=>{
@@ -1028,10 +1031,28 @@ app.put('/api/students/:id',allow('admin'),asyncRoute(async(req,res)=>{
     await client.query('BEGIN');
     const before=await client.query("SELECT id,username,full_name AS name,class_name AS \"className\" FROM users WHERE id=$1 AND role='student' FOR UPDATE",[id]);
     if(!before.rowCount)throw Object.assign(new Error('Siswa tidak ditemukan.'),{status:404});
+    const previous=before.rows[0];
     const updated=await client.query('UPDATE users SET full_name=$2,class_name=$3 WHERE id=$1 RETURNING id,username,full_name AS name,class_name AS "className",active',[id,name,className]);
-    await audit(client,req.session.user.id,'student.update',{studentId:id,username:before.rows[0].username,previous:{name:before.rows[0].name,className:before.rows[0].className},next:{name,className}});
+    const roomChanges=[];
+    if(previous.className!==className){
+      const placements=await client.query(`SELECT ers.room_id AS "roomId",ers.class_name AS "className",er.name,er.quotas
+        FROM exam_room_students ers JOIN exam_rooms er ON er.id=ers.room_id
+        WHERE ers.student_id=$1 ORDER BY er.name FOR UPDATE OF er`,[id]);
+      for(const placement of placements.rows){
+        const quota=(Array.isArray(placement.quotas)?placement.quotas:[]).find(item=>String(item.className)===className);
+        const assigned=quota?await client.query('SELECT count(*)::int n FROM exam_room_students WHERE room_id=$1 AND class_name=$2 AND student_id<>$3',[placement.roomId,className,id]):{rows:[{n:0}]};
+        if(quota&&Number(quota.count)>Number(assigned.rows[0].n)){
+          await client.query('UPDATE exam_room_students SET class_name=$3 WHERE room_id=$1 AND student_id=$2',[placement.roomId,id,className]);
+          roomChanges.push({roomId:Number(placement.roomId),name:placement.name,action:'updated'});
+        }else{
+          await client.query('DELETE FROM exam_room_students WHERE room_id=$1 AND student_id=$2',[placement.roomId,id]);
+          roomChanges.push({roomId:Number(placement.roomId),name:placement.name,action:'removed'});
+        }
+      }
+    }
+    await audit(client,req.session.user.id,'student.update',{studentId:id,username:previous.username,previous:{name:previous.name,className:previous.className},next:{name,className},roomChanges});
     await client.query('COMMIT');
-    res.json(updated.rows[0]);
+    res.json({...updated.rows[0],roomChanges});
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }));
 app.post('/api/students/import',allow('admin'),asyncRoute(async(req,res)=>{
