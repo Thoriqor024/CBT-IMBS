@@ -5,6 +5,13 @@ import { deleteSessionDrafts, getDrafts, markDraftSynced, saveDraft, verifyEncry
 import { FormulaText } from './FormulaText.jsx';
 import { ARABIC_HARAKAT, ARABIC_KEYBOARD_ROWS, resolveArabicKeyPress, isRtlContext } from './arabicKeyboardData.js';
 
+function createSubmitIdempotencyKey(){
+  try{
+    if(globalThis.crypto?.randomUUID)return globalThis.crypto.randomUUID();
+  }catch{}
+  return `submit-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`;
+}
+
 export default function StudentPortal({user,onLogout}) {
   const [exams,setExams]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -165,6 +172,7 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
   const submitRef=useRef(null);
   const autoSubmitRef=useRef(false);
   const isSubmittingRef=useRef(false);
+  const submitIdempotencyKeyRef=useRef(null);
   const initialServerEpoch=Date.parse(initialSession.serverTime);
   const serverClockRef=useRef({epoch:Number.isFinite(initialServerEpoch)?initialServerEpoch:Date.now(),monotonic:performance.now()});
   const textareaRef=useRef(null);
@@ -317,7 +325,9 @@ function ExamRunner({user,initialSession,screenDetails,onExit}){
     try{
       clearTimeout(timerRef.current);clearTimeout(syncTimerRef.current);
       if(!(await flushAndSync()))throw new Error('Belum semua jawaban tersinkron. Sambungkan jaringan lalu coba lagi.');
-      const result=await api(`/student/sessions/${session.id}/submit`,{method:'POST'});
+      const idempotencyKey=submitIdempotencyKeyRef.current||(submitIdempotencyKeyRef.current=createSubmitIdempotencyKey());
+      const result=await api(`/student/sessions/${session.id}/submit`,{method:'POST',headers:{'Idempotency-Key':idempotencyKey}});
+      submitIdempotencyKeyRef.current=null;
       const finished={...sessionRef.current,...result};updateSession(finished);
       await deleteSessionDrafts(session.id).catch(()=>{});
     }catch(err){

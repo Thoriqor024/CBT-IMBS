@@ -24,6 +24,7 @@ const TENANT_TABLES = [
   'exam_sessions',
   'exam_questions',
   'responses',
+  'exam_submit_idempotency',
   'violation_events',
   'audit_logs',
   'schema_migrations',

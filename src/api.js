@@ -12,8 +12,8 @@ export async function api(path, options={}) {
   };
   const response = await fetch(`${apiBase}/api${path}`, {
     credentials:'same-origin',
-    headers,
     ...options,
+    headers,
   });
   const data=await response.json().catch(()=>({}));
   if(!response.ok)throw new Error(data.error||`Permintaan gagal (${response.status})`);

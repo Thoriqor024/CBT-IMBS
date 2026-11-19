@@ -38,6 +38,7 @@ import { assertStudentQuotaInTransaction, assertTeacherQuotaInTransaction } from
 import { validateSubjectInput } from './subjectValidation.js';
 import { calculateItemDifficulty } from './itemAnalysis.js';
 import { createTenantBackupService } from './tenantBackupService.js';
+import { normalizeIdempotencyKey } from './idempotency.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -445,29 +446,36 @@ async function calculateAndSaveFinalScore(client, sessionId) {
   return { finalScore, mcScore, essayScore, allEssaysGraded: essayCount === 0 || essayGradedCount >= essayCount };
 }
 
+async function completeStudentSession(client, sessionId, studentId) {
+  const sessionResult=await client.query(`SELECT es.id,es.status,es.violation_count,e.id AS exam_id,e.duration_minutes,
+      (SELECT count(*)::int FROM violation_events ve WHERE ve.session_id=es.id AND ve.review_status='pending') AS pending_violation_count
+    FROM exam_sessions es JOIN exams e ON e.id=es.exam_id
+    WHERE es.id=$1 AND es.student_id=$2 FOR UPDATE OF es`,[sessionId,studentId]);
+  const examSession=sessionResult.rows[0];
+  if(!examSession)throw Object.assign(new Error('Sesi ujian tidak ditemukan.'),{status:404});
+  if(examSession.status==='locked')return {status:'locked',score:null,finalScore:null,alreadyFinal:true};
+  if(examSession.status==='completed')return {status:'completed',score:null,finalScore:null,alreadyFinal:true};
+  if(Number(examSession.violation_count)+Number(examSession.pending_violation_count)>=getViolationThreshold()){
+    return {status:'in_progress',violationCount:Number(examSession.violation_count),pendingViolationCount:Number(examSession.pending_violation_count),violationReviewRequired:true,alreadyFinal:false};
+  }
+  await client.query("UPDATE exam_sessions SET status='completed',finished_at=NOW() WHERE id=$1",[sessionId]);
+  const calc = await calculateAndSaveFinalScore(client, sessionId);
+  return {status:'completed',score:calc.finalScore,finalScore:calc.finalScore,alreadyFinal:false};
+}
+
 async function finishStudentSession(sessionId, studentId) {
   const client=await pool.connect();
+  let inTransaction=false;
   try {
-    await client.query('BEGIN');
-    const sessionResult=await client.query(`SELECT es.id,es.status,es.violation_count,e.id AS exam_id,e.duration_minutes,
-        (SELECT count(*)::int FROM violation_events ve WHERE ve.session_id=es.id AND ve.review_status='pending') AS pending_violation_count
-      FROM exam_sessions es JOIN exams e ON e.id=es.exam_id
-      WHERE es.id=$1 AND es.student_id=$2 FOR UPDATE OF es`,[sessionId,studentId]);
-    const examSession=sessionResult.rows[0];
-    if(!examSession)throw Object.assign(new Error('Sesi ujian tidak ditemukan.'),{status:404});
-    if(examSession.status==='locked'){await client.query('COMMIT');return {status:'locked',score:null,finalScore:null};}
-    if(examSession.status==='completed'){await client.query('COMMIT');return {status:'completed',score:null,finalScore:null};}
-    if(Number(examSession.violation_count)+Number(examSession.pending_violation_count)>=getViolationThreshold()){
-      await client.query('COMMIT');
-      return {status:'in_progress',violationCount:Number(examSession.violation_count),pendingViolationCount:Number(examSession.pending_violation_count),violationReviewRequired:true};
-    }
-    await client.query("UPDATE exam_sessions SET status='completed',finished_at=NOW() WHERE id=$1",[sessionId]);
-    const calc = await calculateAndSaveFinalScore(client, sessionId);
-    await client.query('COMMIT');
-    await audit(pool,studentId,'student.exam_submit',{sessionId,finalScore:calc.finalScore,finalScorePending:calc.finalScore===null});
-    return {status:'completed',score:calc.finalScore,finalScore:calc.finalScore};
-  } catch(error) { await client.query('ROLLBACK'); throw error; }
-  finally { client.release(); }
+    await client.query('BEGIN');inTransaction=true;
+    const {alreadyFinal,...result}=await completeStudentSession(client,sessionId,studentId);
+    await client.query('COMMIT');inTransaction=false;
+    if(!alreadyFinal&&result.status==='completed')await audit(pool,studentId,'student.exam_submit',{sessionId,finalScore:result.finalScore,finalScorePending:result.finalScore===null});
+    return result;
+  } catch(error) {
+    if(inTransaction)await client.query('ROLLBACK').catch(()=>{});
+    throw error;
+  } finally { client.release(); }
 }
 
 async function checkSessionDeadline(sessionId, studentId) {
@@ -2255,14 +2263,40 @@ app.post('/api/exams/:id/monitor/:sessionId/reset',allow('admin','teacher','peng
   finally{client.release();}
 }));
 app.post('/api/student/sessions/:sessionId/submit',allow('student'),asyncRoute(async(req,res)=>{
-  const before=await checkSessionDeadline(req.params.sessionId,req.session.user.id);
-  if(before.status==='locked')return res.status(423).json({status:'locked',score:null,finalScore:null});
-  if(before.status==='completed')return res.json(before);
-  if(before.status!=='in_progress')return res.status(409).json({error:'Sesi ujian belum dimulai.'});
-  if(before.violationReviewRequired)return res.status(423).json({error:'Ujian dijeda sementara menunggu keputusan Admin.',status:'in_progress',violationReviewRequired:true});
-  const result=await finishStudentSession(req.params.sessionId,req.session.user.id);
-  if(result.violationReviewRequired)return res.status(423).json({error:'Ujian dijeda sementara menunggu keputusan Admin.',...result});
-  res.json(result);
+  const idempotencyKey=normalizeIdempotencyKey(req.get('idempotency-key')??req.body?.idempotencyKey);
+  const client=await pool.connect();
+  let inTransaction=false;
+  try{
+    await client.query('BEGIN');inTransaction=true;
+    const owned=await client.query(`SELECT es.status FROM exam_sessions es
+      JOIN exams e ON e.id=es.exam_id WHERE es.id=$1 AND es.student_id=$2 FOR UPDATE OF es`,
+      [req.params.sessionId,req.session.user.id]);
+    if(!owned.rowCount)throw Object.assign(new Error('Sesi ujian tidak ditemukan.'),{status:404});
+    if(idempotencyKey){
+      const saved=await client.query('SELECT http_status AS "httpStatus",response FROM exam_submit_idempotency WHERE session_id=$1 AND idempotency_key=$2',
+        [req.params.sessionId,idempotencyKey]);
+      if(saved.rowCount){
+        await client.query('COMMIT');inTransaction=false;
+        res.set('Idempotency-Replayed','true');
+        return res.status(saved.rows[0].httpStatus).json(saved.rows[0].response);
+      }
+    }
+    if(owned.rows[0].status==='not_started')throw Object.assign(new Error('Sesi ujian belum dimulai.'),{status:409});
+    const {alreadyFinal,...result}=await completeStudentSession(client,req.params.sessionId,req.session.user.id);
+    if(idempotencyKey&&!alreadyFinal&&result.status==='completed'){
+      await client.query(`INSERT INTO exam_submit_idempotency(session_id,idempotency_key,http_status,response)
+        VALUES($1,$2,200,$3::jsonb) ON CONFLICT(session_id,idempotency_key) DO NOTHING`,
+        [req.params.sessionId,idempotencyKey,JSON.stringify(result)]);
+    }
+    await client.query('COMMIT');inTransaction=false;
+    if(!alreadyFinal&&result.status==='completed')await audit(pool,req.session.user.id,'student.exam_submit',{sessionId:Number(req.params.sessionId),finalScore:result.finalScore,finalScorePending:result.finalScore===null,idempotencyKey});
+    if(result.violationReviewRequired)return res.status(423).json({error:'Ujian dijeda sementara menunggu keputusan Admin.',...result});
+    if(result.status==='locked')return res.status(423).json(result);
+    res.json(result);
+  }catch(error){
+    if(inTransaction)await client.query('ROLLBACK').catch(()=>{});
+    throw error;
+  }finally{client.release();}
 }));
 app.post('/api/exams/:id/monitor/:sessionId/violation',allow('admin','teacher','pengawas'),requireExamScope,asyncRoute(async(req,res)=>{const reason=String(req.body.reason||'Pelanggaran dicatat pengawas').trim().slice(0,240);if(!reason)return res.status(400).json({error:'Alasan pelanggaran wajib diisi.'});const client=await pool.connect();try{await client.query('BEGIN');const q=await client.query('UPDATE exam_sessions SET violation_count=violation_count+1,status=CASE WHEN violation_count+1>=$3 THEN \'locked\' ELSE status END,final_score=CASE WHEN violation_count+1>=$3 THEN NULL ELSE final_score END,finished_at=CASE WHEN violation_count+1>=$3 THEN NOW() ELSE finished_at END WHERE id=$1 AND exam_id=$2 AND status=\'in_progress\' RETURNING id,status,violation_count AS "violationCount"',[req.params.sessionId,req.params.id,getViolationThreshold()]);if(!q.rowCount)throw Object.assign(new Error('Peserta tidak ditemukan atau tidak sedang ujian.'),{status:404});await client.query('INSERT INTO violation_events(session_id,code,detail,review_status,reviewed_by,review_reason,reviewed_at) VALUES($1,\'admin_report\',$2,\'confirmed\',$3,$2,NOW())',[req.params.sessionId,reason,req.session.user.id]);await audit(client,req.session.user.id,'exam.violation',{examId:Number(req.params.id),sessionId:Number(req.params.sessionId),reason,count:q.rows[0].violationCount});await client.query('COMMIT');res.json({...q.rows[0],reason});}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}}));
 
