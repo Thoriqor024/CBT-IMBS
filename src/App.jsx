@@ -569,6 +569,7 @@ export default function App(){
               subjects={subjects}
               exams={exams}
               rooms={rooms}
+              banks={banks}
               tenancyEnabled={tenantLoginEnabled}
               busy={busy}
               error={teacherFormError}
@@ -619,6 +620,7 @@ export default function App(){
               subjects={subjects}
               exams={exams}
               rooms={rooms}
+              banks={banks}
               busy={busy}
               error={teacherFormError}
               onSave={updateTeacherAccess}
@@ -1378,6 +1380,7 @@ function BanksPage({
                 <span>{b.mc} pilihan ganda</span>
                 <span>{b.essay} essay</span>
               </div>
+              <div className="bank-teachers"><Users size={13}/> {b.teachers?.length ? b.teachers.map(teacher => teacher.name).join(', ') : 'Belum ada guru terhubung'}</div>
               <div className="bank-card-foot">
                 <span>ID bank #{b.id}</span>
                 <div className="bank-card-actions">

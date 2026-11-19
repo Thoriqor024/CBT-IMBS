@@ -10,6 +10,7 @@ const TENANT_TABLES = [
   'subjects',
   'teacher_access',
   'question_banks',
+  'question_bank_teachers',
   'question_stimuli',
   'questions',
   'question_media',

@@ -215,6 +215,7 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
       ('it-admin','Integration Admin','admin',$1,TRUE,NULL),
       ('it-pengawas-a','Pengawas A','pengawas',$1,TRUE,NULL),
       ('it-pengawas-b','Pengawas B','pengawas',$1,TRUE,NULL),
+      ('it-teacher','Teacher A','teacher',$1,TRUE,'VII A'),
       ('it-student-a','Student A','student',$1,TRUE,'VII A'),
       ('it-student-b','Student B','student',$1,TRUE,'VII B')
       RETURNING id,username`,[passwordHash]);
@@ -274,6 +275,7 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
     const adminCookie = await login('it-admin');
     const proctorCookie = await login('it-pengawas-a');
     const otherProctorCookie = await login('it-pengawas-b');
+    const teacherCookie = await login('it-teacher');
 
     const adminExams = await request(baseUrl, '/exams', { cookie: adminCookie });
     assert.equal(adminExams.status, 200);
@@ -306,6 +308,75 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
     assert.deepEqual(assignedDetail.data.students.map(row => row.name), ['Student A']);
     const unassignedDetail = await request(baseUrl, `/exams/${unassignedExamId}/monitor`, { cookie: proctorCookie });
     assert.equal(unassignedDetail.status, 404, 'Pengawas tidak boleh membuka monitor ujian yang tidak di-assign.');
+
+    // Bank soal ↔ guru: tautan otomatis dan pengecualian manual.
+    const teacherAccess = await request(baseUrl, `/teachers/${accountId('it-teacher')}/access`, {
+      method: 'PUT', cookie: adminCookie,
+      body: { role: 'teacher', classes: ['VII A'], subjectIds: [subject.rows[0].id], bankIds: [bank.rows[0].id] },
+    });
+    assert.equal(teacherAccess.status, 200, JSON.stringify(teacherAccess.data));
+    assert.deepEqual(teacherAccess.data.banks.map(item => String(item.id)), [String(bank.rows[0].id)]);
+    const teacherId = accountId('it-teacher');
+    const autoLink = await pool.query('SELECT source FROM question_bank_teachers WHERE bank_id=$1 AND teacher_id=$2', [bank.rows[0].id, teacherId]);
+    assert.deepEqual(autoLink.rows, [{ source: 'auto' }], 'Tautan awal harus tercatat otomatis.');
+
+    const teacherBanks = await request(baseUrl, '/banks', { cookie: teacherCookie });
+    assert.equal(teacherBanks.status, 200);
+    assert.deepEqual(teacherBanks.data.map(item => String(item.id)), [String(bank.rows[0].id)]);
+    assert.deepEqual(teacherBanks.data[0].teachers.map(item => item.name), ['Teacher A']);
+
+    const createdBank = await request(baseUrl, '/banks', {
+      method: 'POST', cookie: adminCookie,
+      body: { subjectId: subject.rows[0].id, grade: 'VII', topic: 'Bank Baru Guru', questions: [{ type: 'mc', prompt: 'Pertanyaan baru', options: ['A', 'B', 'C', 'D'], answerKey: 'A', points: 1 }] },
+    });
+    assert.equal(createdBank.status, 201, JSON.stringify(createdBank.data));
+
+    const adminBanks = await request(baseUrl, '/banks', { cookie: adminCookie });
+    const newBankRow = adminBanks.data.find(item => String(item.id) === String(createdBank.data.id));
+    assert.deepEqual(newBankRow.teachers.map(item => item.name), ['Teacher A'], 'Bank admin otomatis terhubung ke guru mapel/tingkat.');
+    const teacherBanksAfterCreate = await request(baseUrl, '/banks', { cookie: teacherCookie });
+    assert.equal(teacherBanksAfterCreate.data.length, 2, 'Guru harus melihat bank baru yang sesuai aksesnya.');
+
+    const clearedBanks = await request(baseUrl, `/teachers/${accountId('it-teacher')}/access`, {
+      method: 'PUT', cookie: adminCookie,
+      body: { role: 'teacher', classes: ['VII A'], subjectIds: [subject.rows[0].id], bankIds: [] },
+    });
+    assert.equal(clearedBanks.status, 200);
+    assert.deepEqual(clearedBanks.data.banks, []);
+    const hiddenBanks = await request(baseUrl, '/banks', { cookie: teacherCookie });
+    assert.deepEqual(hiddenBanks.data, [], 'Bank yang dilepas tidak boleh terlihat walau akses mapel masih ada.');
+
+    const restoredBanks = await request(baseUrl, `/teachers/${accountId('it-teacher')}/access`, {
+      method: 'PUT', cookie: adminCookie,
+      body: { role: 'teacher', classes: ['VII A'], subjectIds: [subject.rows[0].id], bankIds: [bank.rows[0].id] },
+    });
+    assert.deepEqual(restoredBanks.data.banks.map(item => String(item.id)), [String(bank.rows[0].id)]);
+
+    const savedAgain = await request(baseUrl, `/teachers/${teacherId}/access`, {
+      method: 'PUT', cookie: adminCookie,
+      body: { role: 'teacher', classes: ['VII A'], subjectIds: [subject.rows[0].id], bankIds: [bank.rows[0].id] },
+    });
+    assert.equal(savedAgain.status, 200);
+    const autoAfterSave = await pool.query('SELECT source FROM question_bank_teachers WHERE bank_id=$1 AND teacher_id=$2', [bank.rows[0].id, teacherId]);
+    assert.deepEqual(autoAfterSave.rows, [{ source: 'auto' }], 'Menyimpan akses tidak boleh mengubah tautan otomatis menjadi manual.');
+
+    const movedClass = await request(baseUrl, `/teachers/${teacherId}/access`, {
+      method: 'PUT', cookie: adminCookie,
+      body: { role: 'teacher', classes: ['VIII A'], subjectIds: [subject.rows[0].id], bankIds: [] },
+    });
+    assert.equal(movedClass.status, 200);
+    const linksAfterMove = await pool.query('SELECT source FROM question_bank_teachers WHERE teacher_id=$1 AND bank_id=$2', [teacherId, bank.rows[0].id]);
+    assert.deepEqual(linksAfterMove.rows, [], 'Perubahan kelas harus melepas tautan otomatis tingkat lama.');
+    const banksAfterMove = await request(baseUrl, '/banks', { cookie: teacherCookie });
+    assert.deepEqual(banksAfterMove.data, [], 'Bank tingkat lama tidak boleh terlihat setelah kelas berubah.');
+
+    const returnedClass = await request(baseUrl, `/teachers/${teacherId}/access`, {
+      method: 'PUT', cookie: adminCookie,
+      body: { role: 'teacher', classes: ['VII A'], subjectIds: [subject.rows[0].id], bankIds: [bank.rows[0].id] },
+    });
+    assert.equal(returnedClass.status, 200);
+    const autoReturned = await pool.query('SELECT source FROM question_bank_teachers WHERE bank_id=$1 AND teacher_id=$2', [bank.rows[0].id, teacherId]);
+    assert.deepEqual(autoReturned.rows, [{ source: 'auto' }], 'Saat kelas kembali cocok, tautan otomatis harus pulih sebagai auto.');
 
     // Ruang ujian: plotting kuota per kelas, ujian berbasis ruang, dan akses pengawas per ruang.
     const roomOne = await request(baseUrl, '/rooms', {

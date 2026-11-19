@@ -11,6 +11,7 @@ export const DATABASE_MIGRATIONS = [
   { version: 5, name: 'pengawas-role', file: './migrations/005_pengawas-role.sql' },
   { version: 6, name: 'exam-proctors', file: './migrations/006_exam-proctors.sql' },
   { version: 7, name: 'exam-rooms', file: './migrations/007_exam-rooms.sql' },
+  { version: 8, name: 'bank-teachers', file: './migrations/008_bank-teachers.sql' },
 ];
 export const LATEST_DATABASE_MIGRATION_VERSION = DATABASE_MIGRATIONS.at(-1).version;
 
@@ -88,6 +89,13 @@ export async function initializeDatabase(targetPool = pool) {
         grade TEXT NOT NULL, topic TEXT NOT NULL, created_by BIGINT REFERENCES users(id), created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE(subject_id, grade, topic)
       );
+      CREATE TABLE IF NOT EXISTS question_bank_teachers (
+        bank_id BIGINT NOT NULL REFERENCES question_banks(id) ON DELETE CASCADE,
+        teacher_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        source TEXT NOT NULL DEFAULT 'auto' CHECK (source IN ('auto','manual','excluded')),
+        PRIMARY KEY (bank_id, teacher_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_question_bank_teachers_teacher ON question_bank_teachers(teacher_id);
       CREATE TABLE IF NOT EXISTS questions (
         id BIGSERIAL PRIMARY KEY, bank_id BIGINT NOT NULL REFERENCES question_banks(id) ON DELETE CASCADE,
         type TEXT NOT NULL CHECK(type IN ('mc','essay','complex_mc')), prompt TEXT NOT NULL,

@@ -25,6 +25,7 @@ import {
 } from './questionMedia.js';
 import { gradesForTeacherClasses } from './teacherAccess.js';
 import { createExamRoomApi } from './examRoomApi.js';
+import { applyTeacherBankSelection, syncBankTeachers, syncTeacherBanks } from './bankTeachers.js';
 import { prepareAccountProfile } from './accountProfile.js';
 import { createTenantRuntimeFromEnvironment } from './tenantRuntime.js';
 import { createControlPlaneRuntimeFromEnvironment } from './controlPlaneRuntime.js';
@@ -286,9 +287,11 @@ async function teacherCanAccessBankScope(userId,subjectId,grade,client=pool) {
   return result.rows[0].allowed;
 }
 async function teacherCanAccessBank(userId,bankId,client=pool) {
-  const result=await client.query(`SELECT EXISTS(SELECT 1 FROM question_banks b JOIN teacher_access ta ON ta.subject_id=b.subject_id
-    WHERE b.id=$1 AND ta.teacher_id=$2 AND left(ta.class_name,length(b.grade))=b.grade
-      AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-'))) AS allowed`,[bankId,userId]);
+  const result=await client.query(`SELECT EXISTS(SELECT 1 FROM question_banks b WHERE b.id=$1 AND (
+    EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source IN ('auto','manual'))
+    OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade
+      AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-')))
+      AND NOT EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source='excluded')))) AS allowed`,[bankId,userId]);
   return result.rows[0].allowed;
 }
 async function teacherCanAccessExam(userId,examId,client=pool) {
@@ -307,6 +310,11 @@ async function proctorAssignedExams(userId,client=pool) {
 }
 async function proctorAssignedRooms(userId,client=pool) {
   return (await client.query('SELECT er.id,er.name FROM exam_room_proctors erp JOIN exam_rooms er ON er.id=erp.room_id WHERE erp.proctor_id=$1 ORDER BY er.name',[userId])).rows;
+}
+async function teacherAssignedBanks(userId,client=pool) {
+  return (await client.query(`SELECT b.id,s.name AS subject,b.grade,b.topic FROM question_bank_teachers qbt
+    JOIN question_banks b ON b.id=qbt.bank_id JOIN subjects s ON s.id=b.subject_id
+    WHERE qbt.teacher_id=$1 AND qbt.source IN ('auto','manual') ORDER BY b.created_at DESC,b.id DESC`,[userId])).rows;
 }
 const requireExamScope=asyncRoute(async(req,res,next)=>{
   if(req.session.user.role==='admin')return next();
@@ -1121,9 +1129,10 @@ app.post('/api/teachers',allow('admin'),asyncRoute(async(req,res)=>{
       await client.query('INSERT INTO exam_proctors(exam_id,proctor_id) VALUES($1,$2)',[examId,teacher.rows[0].id]);
     if(role==='pengawas')for(const roomId of roomIds)
       await client.query('INSERT INTO exam_room_proctors(room_id,proctor_id) VALUES($1,$2)',[roomId,teacher.rows[0].id]);
+    if(role==='teacher')await syncTeacherBanks(client,teacher.rows[0].id);
     await audit(client,req.session.user.id,'staff.create',{staffId:teacher.rows[0].id,username,role,classNames,subjectIds,examIds,roomIds});
     await client.query('COMMIT');
-    res.status(201).json({...teacher.rows[0],classes:classNames,subjectIds,exams:role==='pengawas'?await proctorAssignedExams(teacher.rows[0].id,client):[],rooms:role==='pengawas'?await proctorAssignedRooms(teacher.rows[0].id,client):[]});
+    res.status(201).json({...teacher.rows[0],classes:classNames,subjectIds,exams:role==='pengawas'?await proctorAssignedExams(teacher.rows[0].id,client):[],rooms:role==='pengawas'?await proctorAssignedRooms(teacher.rows[0].id,client):[],banks:role==='teacher'?await teacherAssignedBanks(teacher.rows[0].id,client):[]});
   }catch(error){await client.query('ROLLBACK');if(error.code==='23505')throw Object.assign(new Error('Username atau email sudah digunakan pada sekolah ini.'),{status:409});throw error;}finally{client.release();}
 }));
 app.post('/api/teachers/import',allow('admin'),asyncRoute(async(req,res)=>{
@@ -1180,7 +1189,8 @@ app.get('/api/teachers',allow('admin'),asyncRoute(async(_req,res)=>{
     COALESCE(array_agg(DISTINCT ta.class_name) FILTER(WHERE ta.class_name IS NOT NULL),ARRAY[]::text[]) AS classes,
     COALESCE(array_agg(DISTINCT ta.subject_id) FILTER(WHERE ta.subject_id IS NOT NULL),ARRAY[]::bigint[]) AS "subjectIds",
     COALESCE((SELECT jsonb_agg(jsonb_build_object('id',e.id,'title',e.title,'className',e.class_name) ORDER BY e.created_at DESC,e.id DESC) FROM exam_proctors ep JOIN exams e ON e.id=ep.exam_id WHERE ep.proctor_id=u.id),'[]'::jsonb) AS exams,
-    COALESCE((SELECT jsonb_agg(jsonb_build_object('id',r.id,'name',r.name) ORDER BY r.name) FROM exam_room_proctors erp JOIN exam_rooms r ON r.id=erp.room_id WHERE erp.proctor_id=u.id),'[]'::jsonb) AS rooms
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('id',r.id,'name',r.name) ORDER BY r.name) FROM exam_room_proctors erp JOIN exam_rooms r ON r.id=erp.room_id WHERE erp.proctor_id=u.id),'[]'::jsonb) AS rooms,
+    COALESCE((SELECT jsonb_agg(jsonb_build_object('id',b.id,'subjectId',b.subject_id,'subject',s.name,'grade',b.grade,'topic',b.topic,'source',qbt.source) ORDER BY b.created_at DESC,b.id DESC) FROM question_bank_teachers qbt JOIN question_banks b ON b.id=qbt.bank_id JOIN subjects s ON s.id=b.subject_id WHERE qbt.teacher_id=u.id AND qbt.source IN ('auto','manual')),'[]'::jsonb) AS banks
     FROM users u LEFT JOIN teacher_access ta ON ta.teacher_id=u.id WHERE u.role IN ('teacher','pengawas')
     GROUP BY u.id ORDER BY u.full_name`);
   res.json(teachers.rows);
@@ -1212,20 +1222,24 @@ app.put('/api/teachers/:id/access',allow('admin'),asyncRoute(async(req,res)=>{
   const subjectIds=Array.isArray(req.body?.subjectIds)?[...new Set(req.body.subjectIds.map(Number))]:[];
   const examIds=Array.isArray(req.body?.examIds)?[...new Set(req.body.examIds.map(Number))]:[];
   const roomIds=Array.isArray(req.body?.roomIds)?[...new Set(req.body.roomIds.map(Number))]:[];
+  const bankIds=Array.isArray(req.body?.bankIds)?[...new Set(req.body.bankIds.map(Number))]:null;
   if(!['teacher','pengawas'].includes(role))return res.status(400).json({error:'Role staf tidak valid.'});
   if(role==='teacher'&&(!classNames.length||!subjectIds.length||subjectIds.some(id=>!Number.isSafeInteger(id)||id<1)))return res.status(400).json({error:'Guru harus memiliki sedikitnya satu kelas dan satu mata pelajaran.'});
   if(role==='pengawas'&&examIds.some(id=>!Number.isSafeInteger(id)||id<1))return res.status(400).json({error:'Sesi ujian pengawas tidak valid.'});
   if(role==='pengawas'&&roomIds.some(id=>!Number.isSafeInteger(id)||id<1))return res.status(400).json({error:'Ruang ujian pengawas tidak valid.'});
-  const [settings,subjects,assignedExams,assignedRooms]=await Promise.all([
+  if(bankIds&&bankIds.some(id=>!Number.isSafeInteger(id)||id<1))return res.status(400).json({error:'Bank soal guru tidak valid.'});
+  const [settings,subjects,assignedExams,assignedRooms,assignedBanks]=await Promise.all([
     pool.query('SELECT classes FROM school_settings WHERE id=1'),
     pool.query('SELECT id FROM subjects WHERE id=ANY($1::bigint[])',[subjectIds]),
     role==='pengawas'&&examIds.length?pool.query('SELECT id FROM exams WHERE id=ANY($1::bigint[])',[examIds]):Promise.resolve({rowCount:0}),
     role==='pengawas'&&roomIds.length?pool.query('SELECT id FROM exam_rooms WHERE id=ANY($1::bigint[])',[roomIds]):Promise.resolve({rowCount:0}),
+    role==='teacher'&&bankIds?.length?pool.query('SELECT id FROM question_banks WHERE id=ANY($1::bigint[])',[bankIds]):Promise.resolve({rowCount:0}),
   ]);
   if(role==='teacher'&&classNames.some(className=>!settings.rows[0].classes.includes(className)))return res.status(400).json({error:'Kelas guru harus dipilih dari Pengaturan sekolah.'});
   if(role==='teacher'&&subjects.rowCount!==subjectIds.length)return res.status(400).json({error:'Mata pelajaran guru tidak valid.'});
   if(role==='pengawas'&&assignedExams.rowCount!==examIds.length)return res.status(400).json({error:'Sesi ujian pengawas tidak ditemukan.'});
   if(role==='pengawas'&&assignedRooms.rowCount!==roomIds.length)return res.status(400).json({error:'Ruang ujian pengawas tidak ditemukan.'});
+  if(role==='teacher'&&assignedBanks.rowCount!==(bankIds?.length||0))return res.status(400).json({error:'Bank soal guru tidak ditemukan.'});
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
@@ -1243,12 +1257,18 @@ app.put('/api/teachers/:id/access',allow('admin'),asyncRoute(async(req,res)=>{
       await client.query('INSERT INTO exam_proctors(exam_id,proctor_id) VALUES($1,$2)',[examId,req.params.id]);
     if(role==='pengawas')for(const roomId of roomIds)
       await client.query('INSERT INTO exam_room_proctors(room_id,proctor_id) VALUES($1,$2)',[roomId,req.params.id]);
-    await audit(client,req.session.user.id,'staff.update',{staffId:Number(req.params.id),previousRole:teacher.rows[0].role,role,previous,previousExams,next:{classNames,subjectIds,examIds,roomIds}});
+    if(role==='teacher'){
+      await syncTeacherBanks(client,req.params.id);
+      if(Array.isArray(bankIds))await applyTeacherBankSelection(client,req.params.id,bankIds);
+    }else{
+      await client.query('DELETE FROM question_bank_teachers WHERE teacher_id=$1',[req.params.id]);
+    }
+    await audit(client,req.session.user.id,'staff.update',{staffId:Number(req.params.id),previousRole:teacher.rows[0].role,role,previous,previousExams,next:{classNames,subjectIds,examIds,roomIds,bankIds}});
     await client.query('COMMIT');
-    res.json({id:Number(req.params.id),role,classes:classNames,subjectIds,exams:role==='pengawas'?await proctorAssignedExams(req.params.id):[],rooms:role==='pengawas'?await proctorAssignedRooms(req.params.id):[]});
+    res.json({id:Number(req.params.id),role,classes:classNames,subjectIds,exams:role==='pengawas'?await proctorAssignedExams(req.params.id):[],rooms:role==='pengawas'?await proctorAssignedRooms(req.params.id):[],banks:role==='teacher'?await teacherAssignedBanks(req.params.id):[]});
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }));
-app.get('/api/banks',allow('admin','teacher'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT b.id,b.grade,b.topic,s.id AS subject_id,s.name AS subject,s.language_code AS "languageCode",s.text_direction AS "textDirection",count(q.id)::int AS count,count(q.id) FILTER(WHERE q.type IN ('mc', 'complex_mc'))::int AS mc,count(q.id) FILTER(WHERE q.type='essay')::int AS essay,(SELECT count(*)::int FROM exams e WHERE e.bank_id=b.id) AS "examCount",(SELECT count(*)::int FROM exam_sessions es JOIN exams e ON e.id=es.exam_id WHERE e.bank_id=b.id) AS "sessionCount" FROM question_banks b JOIN subjects s ON s.id=b.subject_id LEFT JOIN questions q ON q.bank_id=b.id WHERE ($1='admin' OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-')))) GROUP BY b.id,s.id ORDER BY b.created_at DESC`,[req.session.user.role,req.session.user.id]);res.json(q.rows);}));
+app.get('/api/banks',allow('admin','teacher'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT b.id,b.grade,b.topic,s.id AS subject_id,s.name AS subject,s.language_code AS "languageCode",s.text_direction AS "textDirection",count(q.id)::int AS count,count(q.id) FILTER(WHERE q.type IN ('mc', 'complex_mc'))::int AS mc,count(q.id) FILTER(WHERE q.type='essay')::int AS essay,(SELECT count(*)::int FROM exams e WHERE e.bank_id=b.id) AS "examCount",(SELECT count(*)::int FROM exam_sessions es JOIN exams e ON e.id=es.exam_id WHERE e.bank_id=b.id) AS "sessionCount",COALESCE((SELECT jsonb_agg(jsonb_build_object('id',t.id,'name',t.full_name) ORDER BY t.full_name) FROM question_bank_teachers qbt JOIN users t ON t.id=qbt.teacher_id WHERE qbt.bank_id=b.id AND qbt.source IN ('auto','manual')),'[]'::jsonb) AS teachers FROM question_banks b JOIN subjects s ON s.id=b.subject_id LEFT JOIN questions q ON q.bank_id=b.id WHERE ($1='admin' OR EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source IN ('auto','manual')) OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-'))) AND NOT EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source='excluded'))) GROUP BY b.id,s.id ORDER BY b.created_at DESC`,[req.session.user.role,req.session.user.id]);res.json(q.rows);}));
 app.delete('/api/banks/:id',allow('admin'),asyncRoute(async(req,res)=>{
   const client=await pool.connect();
   let mediaFiles=[];
@@ -1304,6 +1324,9 @@ app.post('/api/banks',allow('admin','teacher'),asyncRoute(async(req,res)=>{
     await client.query('BEGIN');
     const bank=await client.query('INSERT INTO question_banks(subject_id,grade,topic,created_by) VALUES($1,$2,$3,$4) RETURNING id',[subjectId,grade,String(topic).trim(),req.session.user.id]);
     const bankId=bank.rows[0].id;
+    await syncBankTeachers(client,bankId);
+    if(req.session.user.role==='teacher')
+      await client.query("INSERT INTO question_bank_teachers(bank_id,teacher_id,source) VALUES($1,$2,'manual') ON CONFLICT(bank_id,teacher_id) DO UPDATE SET source='manual'",[bankId,req.session.user.id]);
     const createdStimulusIds=[];
     if(Array.isArray(stimuli)){
       for(const s of stimuli){
@@ -2196,7 +2219,7 @@ app.get('/api/dashboard',allow('admin','teacher'),asyncRoute(async(req,res)=>{
   const params=[req.session.user.role,req.session.user.id];
   const [students,banks,exams,results]=await Promise.all([
     pool.query("SELECT count(*)::int n FROM users u WHERE u.role='student' AND u.active AND ($1='admin' OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.class_name=u.class_name))",params),
-    pool.query("SELECT count(*)::int n FROM question_banks b WHERE ($1='admin' OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-'))))",params),
+    pool.query("SELECT count(*)::int n FROM question_banks b WHERE ($1='admin' OR EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source IN ('auto','manual')) OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-'))) AND NOT EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source='excluded')))",params),
     pool.query("SELECT count(*)::int n FROM exams e JOIN question_banks b ON b.id=e.bank_id WHERE e.status IN ('active','scheduled') AND ($1='admin' OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*')))))",params),
     pool.query("SELECT round(avg(es.final_score),1) n FROM exam_sessions es JOIN exams e ON e.id=es.exam_id JOIN question_banks b ON b.id=e.bank_id WHERE es.final_score IS NOT NULL AND ($1='admin' OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*')))))",params),
   ]);
