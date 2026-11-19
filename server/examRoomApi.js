@@ -130,29 +130,34 @@ export function createExamRoomApi({ pool, audit, pickExamQuestions }) {
     }
   }
 
-  // Buat ujian dari kombinasi mata pelajaran + ruang ujian. Peserta diambil dari plotting ruang.
+  // Buat ujian dari bank soal + ruang ujian. Peserta diambil dari plotting ruang.
   async function createRoomBasedExam(req, res) {
     const title = String(req.body?.title || '').trim();
+    const bankIds = [...new Set((Array.isArray(req.body?.bankIds) ? req.body.bankIds : []).map(Number))];
     const subjectIds = [...new Set((Array.isArray(req.body?.subjectIds) ? req.body.subjectIds : []).map(Number))];
     const roomIds = [...new Set((Array.isArray(req.body?.roomIds) ? req.body.roomIds : []).map(Number))];
     const mc = Number(req.body?.mcCount);
     const essay = Number(req.body?.essayCount);
     const duration = Number(req.body?.durationMinutes);
     if (!title || title.length > 160
-      || !subjectIds.length || subjectIds.some(id => !Number.isSafeInteger(id) || id < 1)
+      || (!bankIds.length && !subjectIds.length)
+      || bankIds.some(id => !Number.isSafeInteger(id) || id < 1)
+      || subjectIds.some(id => !Number.isSafeInteger(id) || id < 1)
       || !roomIds.length || roomIds.some(id => !Number.isSafeInteger(id) || id < 1)
       || !Number.isInteger(mc) || !Number.isInteger(essay) || mc < 0 || essay < 0 || mc + essay < 1
       || !Number.isInteger(duration) || duration < 1) {
-      throw httpError('Lengkapi nama ujian, mata pelajaran, ruang ujian, jumlah soal, dan durasi.');
+      throw httpError('Lengkapi nama ujian, bank soal, ruang ujian, jumlah soal, dan durasi.');
     }
+    if (req.session.user.role === 'teacher' && !bankIds.length) throw httpError('Pilih bank soal untuk rancangan ujian.');
 
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const subjects = await client.query('SELECT id FROM subjects WHERE id=ANY($1::bigint[])', [subjectIds]);
-      if (subjects.rowCount !== subjectIds.length) throw httpError('Salah satu mata pelajaran tidak ditemukan.', 404);
-      const banks = await client.query('SELECT id,grade FROM question_banks WHERE subject_id=ANY($1::bigint[]) ORDER BY id', [subjectIds]);
-      if (!banks.rowCount) throw httpError('Bank soal untuk mata pelajaran terpilih belum tersedia.');
+      const banks = bankIds.length
+        ? await client.query('SELECT id,subject_id,grade FROM question_banks WHERE id=ANY($1::bigint[]) ORDER BY id', [bankIds])
+        : await client.query('SELECT id,subject_id,grade FROM question_banks WHERE subject_id=ANY($1::bigint[]) ORDER BY id', [subjectIds]);
+      if (bankIds.length && banks.rowCount !== bankIds.length) throw httpError('Salah satu bank soal tidak ditemukan.', 404);
+      if (!banks.rowCount) throw httpError('Bank soal untuk pilihan tersebut belum tersedia.');
 
       const participants = await client.query(`SELECT ers.student_id AS "studentId",ers.room_id AS "roomId",ers.class_name AS "className"
         FROM exam_room_students ers JOIN users u ON u.id=ers.student_id AND u.active=TRUE
@@ -164,11 +169,17 @@ export function createExamRoomApi({ pool, audit, pickExamQuestions }) {
       const unmatched = students.find(student => !student.grade);
       if (unmatched) throw httpError(`Kelas "${unmatched.className}" belum memiliki bank soal pada mata pelajaran terpilih.`);
 
+      const examSubjectIds = [...new Set(banks.rows.map(bank => Number(bank.subject_id)))];
       if (req.session.user.role === 'teacher') {
+        const accessibleBanks = await client.query(`SELECT b.id FROM question_banks b WHERE b.id=ANY($1::bigint[]) AND (
+          EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source IN ('auto','manual'))
+          OR (EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND left(ta.class_name,length(b.grade))=b.grade AND (length(ta.class_name)=length(b.grade) OR substring(ta.class_name,length(b.grade)+1,1) IN (' ','-')))
+            AND NOT EXISTS(SELECT 1 FROM question_bank_teachers qbt WHERE qbt.bank_id=b.id AND qbt.teacher_id=$2 AND qbt.source='excluded')))`,[banks.rows.map(bank => bank.id), req.session.user.id]);
+        if (accessibleBanks.rowCount !== banks.rowCount) throw httpError('Anda tidak memiliki akses ke salah satu bank soal terpilih.', 403);
         const access = await client.query('SELECT subject_id AS "subjectId",class_name AS "className" FROM teacher_access WHERE teacher_id=$1', [req.session.user.id]);
         const pairs = new Set(access.rows.map(row => `${Number(row.subjectId)}:${row.className}`));
         const examClasses = [...new Set(students.map(student => student.className))];
-        for (const subjectId of subjectIds) {
+        for (const subjectId of examSubjectIds) {
           const blockedClass = examClasses.find(className => !pairs.has(`${subjectId}:${className}`));
           if (blockedClass) throw httpError(`Anda tidak memiliki akses mata pelajaran terpilih untuk kelas "${blockedClass}". Hubungi admin untuk menyesuaikan akses guru.`, 403);
         }
@@ -189,8 +200,8 @@ export function createExamRoomApi({ pool, audit, pickExamQuestions }) {
       [title, banks.rows[0].id, classNames.join(', '), mc, essay, duration, req.session.user.id]);
       const examId = exam.rows[0].id;
 
-      for (let index = 0; index < subjectIds.length; index++)
-        await client.query('INSERT INTO exam_subjects(exam_id,subject_id,position) VALUES($1,$2,$3)', [examId, subjectIds[index], index + 1]);
+      for (let index = 0; index < examSubjectIds.length; index++)
+        await client.query('INSERT INTO exam_subjects(exam_id,subject_id,position) VALUES($1,$2,$3)', [examId, examSubjectIds[index], index + 1]);
       for (const roomId of roomIds)
         await client.query('INSERT INTO exam_room_links(exam_id,room_id) VALUES($1,$2)', [examId, roomId]);
 
@@ -205,8 +216,8 @@ export function createExamRoomApi({ pool, audit, pickExamQuestions }) {
       }
 
       await client.query('COMMIT');
-      await audit(pool, req.session.user.id, 'exam.create', { examId, participants: students.length, rooms: roomIds.length, subjects: subjectIds.length });
-      res.status(201).json({ id: examId, participants: students.length, rooms: roomIds.length, subjects: subjectIds.length });
+      await audit(pool, req.session.user.id, 'exam.create', { examId, participants: students.length, rooms: roomIds.length, banks: banks.rowCount, subjects: examSubjectIds.length });
+      res.status(201).json({ id: examId, participants: students.length, rooms: roomIds.length, banks: banks.rowCount, subjects: examSubjectIds.length });
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
