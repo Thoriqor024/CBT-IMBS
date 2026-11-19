@@ -1,6 +1,17 @@
 import { useState } from 'react';
 import { Check, KeyRound, Plus, X } from 'lucide-react';
 
+function bankMatchesAccess(bank, classes = [], subjectIds = []) {
+  const subjectId = String(bank.subjectId ?? bank.subject_id ?? '');
+  if (!subjectIds.map(String).includes(subjectId)) return false;
+  const grade = String(bank.grade || '').trim();
+  if (!grade) return false;
+  return classes.some(className => {
+    const normalized = String(className).trim().replace(/^(kelas|kls|class)\s*[-:]?\s*/i, '');
+    return normalized === grade || normalized.startsWith(grade + ' ') || normalized.startsWith(grade + '-');
+  });
+}
+
 export default function TeacherCreateForm({ teacher, classes, subjects, exams = [], rooms = [], banks = [], tenancyEnabled = false, busy, error, onSave, onCancel }) {
   const [role, setRole] = useState(teacher?.role || 'teacher');
   const [name, setName] = useState(teacher?.name || '');
@@ -11,21 +22,19 @@ export default function TeacherCreateForm({ teacher, classes, subjects, exams = 
   const [selectedSubjects, setSelectedSubjects] = useState((teacher?.subjectIds || []).map(String));
   const [selectedExams, setSelectedExams] = useState((teacher?.exams || []).map(exam => String(exam.id)));
   const [selectedRooms, setSelectedRooms] = useState((teacher?.rooms || []).map(room => String(room.id)));
-  const [selectedBanks, setSelectedBanks] = useState((teacher?.banks || []).map(bank => String(bank.id)));
-  const [autoBankIds, setAutoBankIds] = useState((teacher?.banks || []).filter(bank => bank.source === 'auto').map(bank => String(bank.id)));
+  const teacherBankRows = teacher?.banks || [];
+  const teacherBankRowsLoaded = teacherBankRows.length > 0;
+  const eligibleBanks = teacher ? banks.filter(bank => bankMatchesAccess(bank, teacher.classes || [], (teacher.subjectIds || []).map(String))) : [];
+  const [selectedBanks, setSelectedBanks] = useState(() => (teacherBankRowsLoaded
+    ? teacherBankRows.filter(bank => bank.source !== 'excluded')
+    : eligibleBanks).map(bank => String(bank.id)));
+  const [autoBankIds, setAutoBankIds] = useState(() => (teacherBankRowsLoaded
+    ? teacherBankRows.filter(bank => bank.source === 'auto')
+    : eligibleBanks).map(bank => String(bank.id)));
 
   const toggle = (values, value, setValues) => setValues(current => current.includes(value)
     ? current.filter(item => item !== value)
     : [...current, value]);
-
-  const bankMatchesAccess = (bank, classes, subjectIds) => {
-    if (!subjectIds.includes(String(bank.subjectId))) return false;
-    const grade = String(bank.grade || '').trim();
-    return classes.some(className => {
-      const normalized = String(className).trim().replace(/^(kelas|kls|class)\s*[-:]?\s*/i, '');
-      return normalized === grade || normalized.startsWith(grade + ' ') || normalized.startsWith(grade + '-');
-    });
-  };
 
   // Pertahankan bank otomatis yang masih cocok, dan pulihkan saat kelas/mapel cocok lagi.
   const reconcileAutoBanks = (classes, subjectIds) => setSelectedBanks(current => {

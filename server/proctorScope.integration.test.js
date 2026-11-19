@@ -216,6 +216,7 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
       ('it-pengawas-a','Pengawas A','pengawas',$1,TRUE,NULL),
       ('it-pengawas-b','Pengawas B','pengawas',$1,TRUE,NULL),
       ('it-teacher','Teacher A','teacher',$1,TRUE,'VII A'),
+      ('it-teacher-b','Teacher B','teacher',$1,TRUE,'VII A'),
       ('it-student-a','Student A','student',$1,TRUE,'VII A'),
       ('it-student-b','Student B','student',$1,TRUE,'VII B')
       RETURNING id,username`,[passwordHash]);
@@ -224,6 +225,7 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
     const bank = await pool.query('INSERT INTO question_banks(subject_id,grade,topic) VALUES($1,$2,$3) RETURNING id',[
       subject.rows[0].id, 'VII', 'Integration Proctor Bank',
     ]);
+    await pool.query('INSERT INTO teacher_access(teacher_id,subject_id,class_name) VALUES($1,$2,$3)',[accountId('it-teacher-b'), subject.rows[0].id, 'VII A']);
     await pool.query(`INSERT INTO questions(bank_id,type,prompt,options,answer_key,points) VALUES
       ($1,'mc','Soal 1','["A","B","C","D"]','A',1),
       ($1,'mc','Soal 2','["A","B","C","D"]','B',1),
@@ -323,7 +325,9 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
     const teacherBanks = await request(baseUrl, '/banks', { cookie: teacherCookie });
     assert.equal(teacherBanks.status, 200);
     assert.deepEqual(teacherBanks.data.map(item => String(item.id)), [String(bank.rows[0].id)]);
-    assert.deepEqual(teacherBanks.data[0].teachers.map(item => item.name), ['Teacher A']);
+    assert.deepEqual(teacherBanks.data[0].teachers.map(item => item.name), ['Teacher A', 'Teacher B']);
+    const directLinks = await pool.query('SELECT count(*)::int AS count FROM question_bank_teachers WHERE teacher_id=$1', [accountId('it-teacher-b')]);
+    assert.equal(directLinks.rows[0].count, 0, 'Guru tanpa tautan tetap tampil dari akses mapel/tingkat.');
 
     const createdBank = await request(baseUrl, '/banks', {
       method: 'POST', cookie: adminCookie,
@@ -333,7 +337,7 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
 
     const adminBanks = await request(baseUrl, '/banks', { cookie: adminCookie });
     const newBankRow = adminBanks.data.find(item => String(item.id) === String(createdBank.data.id));
-    assert.deepEqual(newBankRow.teachers.map(item => item.name), ['Teacher A'], 'Bank admin otomatis terhubung ke guru mapel/tingkat.');
+    assert.deepEqual(newBankRow.teachers.map(item => item.name), ['Teacher A', 'Teacher B'], 'Bank admin otomatis terhubung ke guru mapel/tingkat.');
     const teacherBanksAfterCreate = await request(baseUrl, '/banks', { cookie: teacherCookie });
     assert.equal(teacherBanksAfterCreate.data.length, 2, 'Guru harus melihat bank baru yang sesuai aksesnya.');
 
@@ -342,7 +346,8 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
       body: { role: 'teacher', classes: ['VII A'], subjectIds: [subject.rows[0].id], bankIds: [] },
     });
     assert.equal(clearedBanks.status, 200);
-    assert.deepEqual(clearedBanks.data.banks, []);
+    assert.ok(clearedBanks.data.banks.length >= 1);
+    assert.ok(clearedBanks.data.banks.every(bank => bank.source === 'excluded'), 'Semua bank yang dilepas tercatat excluded: ' + JSON.stringify(clearedBanks.data.banks));
     const hiddenBanks = await request(baseUrl, '/banks', { cookie: teacherCookie });
     assert.deepEqual(hiddenBanks.data, [], 'Bank yang dilepas tidak boleh terlihat walau akses mapel masih ada.');
 
@@ -350,7 +355,7 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
       method: 'PUT', cookie: adminCookie,
       body: { role: 'teacher', classes: ['VII A'], subjectIds: [subject.rows[0].id], bankIds: [bank.rows[0].id] },
     });
-    assert.deepEqual(restoredBanks.data.banks.map(item => String(item.id)), [String(bank.rows[0].id)]);
+    assert.deepEqual(restoredBanks.data.banks.filter(item => item.source !== 'excluded').map(item => String(item.id)), [String(bank.rows[0].id)]);
 
     const savedAgain = await request(baseUrl, `/teachers/${teacherId}/access`, {
       method: 'PUT', cookie: adminCookie,
