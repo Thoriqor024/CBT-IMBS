@@ -1316,7 +1316,8 @@ function TeacherAccountsPage({ teachers, subjects, quota, onAdd, onImport, onEdi
               : (teacher.classes.length ? teacher.classes.join(', ') : 'Belum ditetapkan')}</span>
             <span>{teacher.role === 'pengawas'
               ? (proctorScopeLabels(teacher).join(', ') || 'Belum ditetapkan')
-              : (teacher.subjectIds.length ? teacher.subjectIds.map(id => subjects.find(subject => Number(subject.id) === Number(id))?.name || id).join(', ') : 'Belum ditetapkan')}</span>
+              : <>{teacher.subjectIds.length ? teacher.subjectIds.map(id => subjects.find(subject => Number(subject.id) === Number(id))?.name || id).join(', ') : 'Belum ditetapkan'}
+                <small className="teacher-access-meta">{(teacher.banks || []).filter(bank => bank.source !== 'excluded').length} bank soal terhubung</small></>}</span>
             <span className="teacher-account-actions">
               <button className="secondary" onClick={() => onEdit(teacher)}>Atur akses</button>
               <button className="teacher-delete-button" aria-label={`Hapus akun ${teacher.name}`} onClick={() => onDelete(teacher)}><Trash2 size={13}/> Hapus</button>

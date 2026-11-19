@@ -1094,6 +1094,7 @@ app.post('/api/teachers',allow('admin'),asyncRoute(async(req,res)=>{
   const subjectIds=Array.isArray(req.body?.subjectIds)?[...new Set(req.body.subjectIds.map(Number))]:[];
   const examIds=Array.isArray(req.body?.examIds)?[...new Set(req.body.examIds.map(Number))]:[];
   const roomIds=Array.isArray(req.body?.roomIds)?[...new Set(req.body.roomIds.map(Number))]:[];
+  const bankIds=Array.isArray(req.body?.bankIds)?[...new Set(req.body.bankIds.map(Number))]:null;
   if(!['teacher','pengawas'].includes(role))return res.status(400).json({error:'Role staf tidak valid.'});
   if(!name||name.length>120)return res.status(400).json({error:'Nama staf wajib diisi dan maksimal 120 karakter.'});
   if(!/^[a-z0-9._-]{3,40}$/.test(username))return res.status(400).json({error:'Username akses harus 3–40 karakter: huruf, angka, titik, garis bawah, atau tanda hubung.'});
@@ -1101,19 +1102,22 @@ app.post('/api/teachers',allow('admin'),asyncRoute(async(req,res)=>{
   if(role==='teacher'&&(!classNames.length||!subjectIds.length||subjectIds.some(id=>!Number.isSafeInteger(id)||id<1)))return res.status(400).json({error:'Guru harus memiliki sedikitnya satu kelas dan satu mata pelajaran.'});
   if(role==='pengawas'&&examIds.some(id=>!Number.isSafeInteger(id)||id<1))return res.status(400).json({error:'Sesi ujian pengawas tidak valid.'});
   if(role==='pengawas'&&roomIds.some(id=>!Number.isSafeInteger(id)||id<1))return res.status(400).json({error:'Ruang ujian pengawas tidak valid.'});
+  if(bankIds&&bankIds.some(id=>!Number.isSafeInteger(id)||id<1))return res.status(400).json({error:'Bank soal guru tidak valid.'});
   const tenant=tenantRuntime?.context.getCurrent()?.tenant;
-  const [settings,subjects,existing,existingEmail,assignedExams,assignedRooms]=await Promise.all([
+  const [settings,subjects,existing,existingEmail,assignedExams,assignedRooms,assignedBanks]=await Promise.all([
     pool.query('SELECT classes FROM school_settings WHERE id=1'),
     pool.query('SELECT id FROM subjects WHERE id=ANY($1::bigint[])',[subjectIds]),
     pool.query('SELECT 1 FROM users WHERE lower(username)=lower($1)',[username]),
     email?pool.query('SELECT 1 FROM users WHERE lower(email)=lower($1)',[email]):Promise.resolve({rowCount:0}),
     role==='pengawas'&&examIds.length?pool.query('SELECT id FROM exams WHERE id=ANY($1::bigint[])',[examIds]):Promise.resolve({rowCount:0}),
     role==='pengawas'&&roomIds.length?pool.query('SELECT id FROM exam_rooms WHERE id=ANY($1::bigint[])',[roomIds]):Promise.resolve({rowCount:0}),
+    role==='teacher'&&bankIds?.length?pool.query('SELECT id FROM question_banks WHERE id=ANY($1::bigint[])',[bankIds]):Promise.resolve({rowCount:0}),
   ]);
   if(role==='teacher'&&classNames.some(className=>!settings.rows[0].classes.includes(className)))return res.status(400).json({error:'Kelas guru harus dipilih dari Pengaturan sekolah.'});
   if(role==='teacher'&&subjects.rowCount!==subjectIds.length)return res.status(400).json({error:'Mata pelajaran guru tidak valid.'});
   if(role==='pengawas'&&assignedExams.rowCount!==examIds.length)return res.status(400).json({error:'Sesi ujian pengawas tidak ditemukan.'});
   if(role==='pengawas'&&assignedRooms.rowCount!==roomIds.length)return res.status(400).json({error:'Ruang ujian pengawas tidak ditemukan.'});
+  if(role==='teacher'&&assignedBanks.rowCount!==(bankIds?.length||0))return res.status(400).json({error:'Bank soal guru tidak ditemukan.'});
   if(existing.rowCount)return res.status(409).json({error:'Username akses sudah digunakan.'});
   if(existingEmail.rowCount)return res.status(409).json({error:'Email sudah digunakan pada sekolah ini.'});
   const client=await pool.connect();
@@ -1130,8 +1134,11 @@ app.post('/api/teachers',allow('admin'),asyncRoute(async(req,res)=>{
       await client.query('INSERT INTO exam_proctors(exam_id,proctor_id) VALUES($1,$2)',[examId,teacher.rows[0].id]);
     if(role==='pengawas')for(const roomId of roomIds)
       await client.query('INSERT INTO exam_room_proctors(room_id,proctor_id) VALUES($1,$2)',[roomId,teacher.rows[0].id]);
-    if(role==='teacher')await syncTeacherBanks(client,teacher.rows[0].id);
-    await audit(client,req.session.user.id,'staff.create',{staffId:teacher.rows[0].id,username,role,classNames,subjectIds,examIds,roomIds});
+    if(role==='teacher'){
+      await syncTeacherBanks(client,teacher.rows[0].id);
+      if(Array.isArray(bankIds))await applyTeacherBankSelection(client,teacher.rows[0].id,bankIds);
+    }
+    await audit(client,req.session.user.id,'staff.create',{staffId:teacher.rows[0].id,username,role,classNames,subjectIds,examIds,roomIds,bankIds});
     await client.query('COMMIT');
     res.status(201).json({...teacher.rows[0],classes:classNames,subjectIds,exams:role==='pengawas'?await proctorAssignedExams(teacher.rows[0].id,client):[],rooms:role==='pengawas'?await proctorAssignedRooms(teacher.rows[0].id,client):[],banks:role==='teacher'?await teacherAssignedBanks(teacher.rows[0].id,client):[]});
   }catch(error){await client.query('ROLLBACK');if(error.code==='23505')throw Object.assign(new Error('Username atau email sudah digunakan pada sekolah ini.'),{status:409});throw error;}finally{client.release();}
