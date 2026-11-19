@@ -76,7 +76,7 @@
 .quick-item small { font-size: 12px !important; color: #64748b !important; margin-top: 3px !important; }
 
 /* Student table */
-.table-label { font-size: 11px !important; font-weight: 700 !important; letter-spacing: 0.8px !important; color: #94a3b8 !important; min-height: 32px !important; }
+.table-label { font-size: 12px !important; font-weight: 700 !important; letter-spacing: 0.5px !important; color: #94a3b8 !important; min-height: 34px !important; }
 .student-table .table-row { min-height: 52px !important; font-size: 13.5px !important; color: #334155 !important; }
 .student-name { font-size: 14px !important; font-weight: 600 !important; color: #1e293b !important; gap: 10px !important; }
 .mini-avatar { width: 32px !important; height: 32px !important; font-size: 12px !important; font-weight: 700 !important; }
@@ -186,7 +186,7 @@
 
   /* Navigation items */
   .nav-item { font-size: 12px !important; height: 41px !important; }
-  .nav-caption { font-size: 9px !important; }
+  .nav-caption { font-size: 10px !important; }
 
   /* Quick action items */
   .quick-item > i { width: 36px !important; height: 36px !important; }
@@ -202,7 +202,7 @@
   .student-name { font-size: 12px !important; }
   .mini-avatar { width: 27px !important; height: 27px !important; font-size: 10px !important; }
   .mono { font-size: 10px !important; }
-  .table-label { font-size: 9px !important; min-height: 28px !important; }
+  .table-label { font-size: 12px !important; min-height: 32px !important; }
 
   /* Exam cards */
   .running-exam h3 { font-size: 13px !important; }

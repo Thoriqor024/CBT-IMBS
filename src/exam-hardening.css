@@ -22,7 +22,7 @@
 .exam-top{position:relative;z-index:1}.exam-body{position:relative;z-index:1}
 .exam-net,.exam-top .autosave-state{display:flex;align-items:center;gap:6px}
 .exam-security-overlay button{font:inherit;font-size:14px;font-weight:600}
-.monitor-presence{display:flex;align-items:center;gap:4px;margin-top:4px;font:600 9px 'DM Sans',sans-serif}
+.monitor-presence{display:flex;align-items:center;gap:4px;margin-top:4px;font:600 12px 'DM Sans',sans-serif}
 .monitor-presence.online{color:#3f9468}.monitor-presence.offline{color:#b38335}
 .exam-pin-panel{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;margin-bottom:16px;padding:13px 14px;border:1px solid #dcebe1;border-radius:10px;background:#f4faf6}
 .exam-pin-panel>div{display:grid;gap:4px}.exam-pin-panel b{color:#355b45;font-size:12px}.exam-pin-panel small{color:#71847a;font-size:10px;line-height:1.5}
