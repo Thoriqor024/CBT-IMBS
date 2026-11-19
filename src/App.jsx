@@ -77,6 +77,7 @@ export default function App(){
   const login=async(e,credentials)=>{e?.preventDefault();setBusy(true);setError('');try{const platformOwner=credentials.platformOwner===true;const path=platformOwner?'/platform/auth/login':'/auth/login';const payload=platformOwner?{email:credentials.email,password:credentials.password}:tenantLoginEnabled?credentials:{username:credentials.username,password:credentials.password};const r=await api(path,{method:'POST',body:JSON.stringify(payload)});if(payload.schoolCode)saveLastSchoolCode(payload.schoolCode);if(r.user?.role==='student')try{localStorage.setItem('imbs_cached_student',JSON.stringify(r.user));}catch{}setUser(r.user);}catch(err){setError(err.message);}finally{setBusy(false);}};
   const logout=async()=>{await api('/auth/logout',{method:'POST'}).catch(()=>{});try{localStorage.removeItem('imbs_cached_student');localStorage.removeItem('imbs_active_exam_session');}catch{}setUser(null);setPage('Ringkasan');};
   const saveOwnProfile=async changes=>{setProfileFormError('');setBusy(true);try{const result=await api('/account/profile',{method:'PUT',body:JSON.stringify(changes)});setUser(current=>current?{...current,...result}:current);setModal('');notify(result.passwordChanged?'Profil diperbarui. Sesi login lain telah dicabut.':'Nama profil diperbarui.');}catch(err){setProfileFormError(err.message||'Profil tidak dapat diperbarui.');}finally{setBusy(false);}};
+  const completeBulkClass=async result=>{await loadAll();const summary=result.summary;notify(`${summary.willMove} siswa dipindahkan ke ${result.targetClass}. ${summary.roomUpdates} penempatan ruang disesuaikan, ${summary.roomRemovals} dikeluarkan${summary.blocked?`, ${summary.blocked} dilewati karena ujian aktif`:''}.`);};
   const openStudentCreate=()=>{setStudentToEdit(null);setStudentForm({name:'',email:'',className:schoolSettings.classes[0]});setModal('student');};
   const editStudent=student=>{setStudentToEdit(student);setStudentForm({name:student.name,email:'',className:student.className});setModal('student');};
   const saveStudent=async()=>{const name=studentForm.name.trim();if(!name){notify('Nama siswa wajib diisi.');return;}if(studentToEdit){const classChanged=studentForm.className!==studentToEdit.className,rooms=studentToEdit.rooms||[];if(classChanged&&rooms.length&&!window.confirm(`Siswa terplotting di ${rooms.map(room=>room.name).join(', ')}. Pindah kelas akan menyesuaikan penempatan ruang; ruang yang tidak mencakup kelas baru akan dikosongkan. Lanjutkan?`))return;const r=await run(()=>api('/students/'+studentToEdit.id,{method:'PUT',body:JSON.stringify({name,className:studentForm.className})}));if(r){const removed=(r.roomChanges||[]).filter(change=>change.action==='removed').map(change=>change.name),adjusted=(r.roomChanges||[]).filter(change=>change.action==='updated').map(change=>change.name);setStudentToEdit(null);setStudentForm({name:'',email:'',className:schoolSettings.classes[0]});setModal('');await loadAll();notify(removed.length?`Data siswa diperbarui. Siswa dikeluarkan dari ${removed.join(', ')} karena ruang tidak mencakup kelas baru; atur ulang plotting ruang.`:adjusted.length?`Data siswa diperbarui. Penempatan ruang ${adjusted.join(', ')} disesuaikan ke kelas baru.`:'Data siswa diperbarui.');}return;}const r=await run(()=>api('/students',{method:'POST',body:JSON.stringify({...studentForm,name})}));if(r){setCredentials([r]);setStudentForm({name:'',email:'',className:schoolSettings.classes[0]});setModal('credentials');await loadAll();notify('Akun siswa dibuat. Simpan token sekarang; token tidak bisa dibaca ulang.');}};
@@ -333,10 +334,12 @@ export default function App(){
               query={query}
               setQuery={setQuery}
               isAdmin={isAdmin}
+              classes={schoolSettings.classes}
               onCreate={openStudentCreate}
               onImport={() => setModal("import")}
               onEdit={editStudent}
               onDelete={deleteStudent}
+              onBulkComplete={completeBulkClass}
               onTemplate={downloadStudentImportTemplate}
             />
           )}
@@ -1186,6 +1189,7 @@ function StudentsPage({
   students,
   total,
   quota,
+  classes = [],
   query,
   setQuery,
   isAdmin,
@@ -1193,8 +1197,81 @@ function StudentsPage({
   onImport,
   onEdit,
   onDelete,
+  onBulkComplete,
   onTemplate,
 }) {
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkClass, setBulkClass] = useState("");
+  const [bulkPreview, setBulkPreview] = useState(null);
+  const [bulkError, setBulkError] = useState("");
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const selectedStudents = students.filter((student) => selected.has(String(student.id)));
+  const allSelected = students.length > 0 && students.every((student) => selected.has(String(student.id)));
+  const toggleStudent = (id) => setSelected((current) => {
+    const next = new Set(current), key = String(id);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(students.map((student) => String(student.id))));
+  const openBulk = () => {
+    setBulkClass(classes[0] || "");
+    setBulkPreview(null);
+    setBulkError("");
+    setBulkOpen(true);
+  };
+  const closeBulk = () => {
+    if (bulkBusy) return;
+    setBulkOpen(false);
+    setBulkPreview(null);
+    setBulkError("");
+  };
+  const loadBulkPreview = async () => {
+    if (!bulkClass) { setBulkError("Pilih kelas tujuan."); return; }
+    setBulkBusy(true);
+    setBulkError("");
+    try {
+      setBulkPreview(await api("/students/bulk-class/preview", {
+        method: "POST",
+        body: JSON.stringify({ studentIds: selectedStudents.map((student) => student.id), className: bulkClass }),
+      }));
+    } catch (err) {
+      setBulkPreview(null);
+      setBulkError(err.message || "Pratinjau tidak dapat dimuat.");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+  const applyBulk = async () => {
+    if (!bulkPreview) return;
+    setBulkBusy(true);
+    setBulkError("");
+    try {
+      const result = await api("/students/bulk-class", {
+        method: "POST",
+        body: JSON.stringify({ studentIds: selectedStudents.map((student) => student.id), className: bulkClass }),
+      });
+      setSelected(new Set());
+      setBulkOpen(false);
+      setBulkPreview(null);
+      await onBulkComplete(result);
+    } catch (err) {
+      setBulkError(err.message || "Pindah kelas tidak dapat disimpan.");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+  const outcomeLabel = (student) => {
+    if (student.status === "unchanged") return "Sudah berada di kelas tujuan";
+    if (student.status === "blocked") return `Dilewati: ${student.reason}`;
+    if (student.unassigned) {
+      const removed = student.roomChanges.filter((change) => change.action === "removed").map((change) => change.name);
+      return removed.length ? `Dikeluarkan dari ${removed.join(", ")}; tanpa ruang` : "Belum memiliki ruang";
+    }
+    return student.roomChanges
+      .map((change) => `${change.name}: ${change.action === "updated" ? "disesuaikan" : "dikeluarkan"}`)
+      .join(" · ");
+  };
   return (
     <>
       <PageTitle
@@ -1223,9 +1300,29 @@ function StudentsPage({
             <Download size={15} /> Template CSV
           </button>
         </div>
+        {isAdmin && selectedStudents.length > 0 && (
+          <div className="bulk-selection-bar">
+            <span><b>{selectedStudents.length}</b> siswa dipilih</span>
+            <div className="button-row">
+              <button className="secondary" onClick={() => setSelected(new Set())}>Batalkan</button>
+              <button className="primary" onClick={openBulk}>Pindah kelas</button>
+            </div>
+          </div>
+        )}
         <div className="student-table wide student-list-scroll">
           <div className="table-row table-label">
-            <span>NAMA SISWA</span>
+            <span className="student-select-all">
+              {isAdmin && (
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  disabled={!students.length}
+                  aria-label="Pilih semua siswa"
+                />
+              )}
+              NAMA SISWA
+            </span>
             <span>USERNAME</span>
             <span>KELAS</span>
             <span>AKUN</span>
@@ -1234,6 +1331,15 @@ function StudentsPage({
           {students.map((s, i) => (
             <div className="table-row" key={s.id}>
               <span className="student-name">
+                {isAdmin && (
+                  <input
+                    type="checkbox"
+                    className="student-select"
+                    checked={selected.has(String(s.id))}
+                    onChange={() => toggleStudent(s.id)}
+                    aria-label={`Pilih ${s.name}`}
+                  />
+                )}
                 <i className={`mini-avatar av-${i % 4}`}>
                   {s.name
                     .split(" ")
@@ -1284,6 +1390,70 @@ function StudentsPage({
           </span>
         </div>
       </section>
+      {bulkOpen && (
+        <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && closeBulk()}>
+          <div className="modal bulk-class-modal">
+            <div className="modal-head">
+              <div>
+                <div className="eyebrow">TRANSFER KELAS</div>
+                <h2>Pindah kelas massal</h2>
+              </div>
+              <button className="icon-button" onClick={closeBulk} disabled={bulkBusy} aria-label="Tutup"><X size={18} /></button>
+            </div>
+            <div className="bulk-selection-summary"><Users size={15} /> {selectedStudents.length} siswa dipilih</div>
+            <label>
+              Kelas tujuan
+              <select
+                value={bulkClass}
+                onChange={(event) => { setBulkClass(event.target.value); setBulkPreview(null); setBulkError(""); }}
+                disabled={bulkBusy}
+              >
+                {classes.map((className) => <option key={className}>{className}</option>)}
+              </select>
+            </label>
+            <div className="form-note">
+              <ShieldCheck size={16} /> Pratinjau menghitung kapasitas ruang dan melewati siswa yang sedang mengerjakan ujian.
+            </div>
+            {bulkPreview ? (
+              <>
+                <div className="bulk-preview-summary">
+                  <span><b>{bulkPreview.summary.willMove}</b> akan dipindah</span>
+                  <span><b>{bulkPreview.summary.unchanged}</b> sudah di kelas tujuan</span>
+                  <span><b>{bulkPreview.summary.blocked}</b> dilewati</span>
+                  <span><b>{bulkPreview.summary.roomUpdates}</b> penempatan disesuaikan</span>
+                  <span><b>{bulkPreview.summary.roomRemovals}</b> dikeluarkan dari ruang</span>
+                  <span><b>{bulkPreview.summary.unassigned}</b> tanpa ruang</span>
+                </div>
+                <div className="bulk-preview-list">
+                  {bulkPreview.students.map((student) => (
+                    <div className="bulk-preview-row" key={student.id}>
+                      <b>{student.name}</b>
+                      <span>{student.fromClass} → {bulkPreview.targetClass}</span>
+                      <small className={`bulk-status-${student.status}`}>{outcomeLabel(student)}</small>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className="bulk-preview-empty">Pilih kelas tujuan lalu tampilkan pratinjau dampaknya.</div>
+            )}
+            {bulkError && <div className="question-form-error" role="alert">{bulkError}</div>}
+            <div className="modal-actions">
+              <button className="secondary" onClick={closeBulk} disabled={bulkBusy}>Batal</button>
+              {bulkPreview && <button className="secondary" onClick={loadBulkPreview} disabled={bulkBusy}>Hitung ulang</button>}
+              {bulkPreview ? (
+                <button className="primary" onClick={applyBulk} disabled={bulkBusy || !bulkPreview.summary.willMove}>
+                  {bulkBusy ? "Menyimpan..." : `Pindahkan ${bulkPreview.summary.willMove} siswa`}
+                </button>
+              ) : (
+                <button className="primary" onClick={loadBulkPreview} disabled={bulkBusy || !bulkClass}>
+                  {bulkBusy ? "Menghitung..." : "Tampilkan pratinjau"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

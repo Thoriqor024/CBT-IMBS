@@ -26,6 +26,7 @@ import {
 import { gradesForTeacherClasses } from './teacherAccess.js';
 import { createExamRoomApi } from './examRoomApi.js';
 import { applyTeacherBankSelection, syncBankTeachers, syncTeacherBanks } from './bankTeachers.js';
+import { buildClassTransferPlan } from './studentClassTransfer.js';
 import { prepareAccountProfile } from './accountProfile.js';
 import { createTenantRuntimeFromEnvironment } from './tenantRuntime.js';
 import { createControlPlaneRuntimeFromEnvironment } from './controlPlaneRuntime.js';
@@ -1053,6 +1054,51 @@ app.put('/api/students/:id',allow('admin'),asyncRoute(async(req,res)=>{
     await audit(client,req.session.user.id,'student.update',{studentId:id,username:previous.username,previous:{name:previous.name,className:previous.className},next:{name,className},roomChanges});
     await client.query('COMMIT');
     res.json({...updated.rows[0],roomChanges});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+}));
+async function studentBulkClassRequest(body){
+  const className=String(body?.className||'').trim();
+  const studentIds=Array.isArray(body?.studentIds)?[...new Set(body.studentIds.map(Number))]:[];
+  if(!studentIds.length||studentIds.length>200||studentIds.some(id=>!Number.isSafeInteger(id)||id<1))
+    throw Object.assign(new Error('Pilih 1–200 siswa yang valid.'),{status:400});
+  const settings=await pool.query('SELECT classes FROM school_settings WHERE id=1');
+  if(!(settings.rows[0]?.classes||[]).includes(className))
+    throw Object.assign(new Error('Pilih kelas tujuan yang tersedia pada Pengaturan sekolah.'),{status:400});
+  return {studentIds,className};
+}
+async function loadStudentBulkClassPlan(runner,studentIds,className,lock=false){
+  const students=await runner.query(`SELECT id,username,full_name AS name,class_name AS "className"
+    FROM users WHERE id=ANY($1::bigint[]) AND role='student' ORDER BY full_name,id${lock?' FOR UPDATE':''}`,[studentIds]);
+  const placements=await runner.query(`SELECT ers.student_id AS "studentId",ers.room_id AS "roomId",er.name,er.quotas,
+      (SELECT count(*)::int FROM exam_room_students x WHERE x.room_id=er.id AND x.class_name=$2) AS "targetCount"
+    FROM exam_room_students ers JOIN exam_rooms er ON er.id=ers.room_id
+    WHERE ers.student_id=ANY($1::bigint[]) ORDER BY er.name,er.id${lock?' FOR UPDATE OF er':''}`,[studentIds,className]);
+  const active=await runner.query("SELECT DISTINCT student_id AS id FROM exam_sessions WHERE student_id=ANY($1::bigint[]) AND status='in_progress'",[studentIds]);
+  const plan=buildClassTransferPlan({students:students.rows,placements:placements.rows,targetClass:className,activeStudentIds:active.rows.map(row=>row.id)});
+  if(plan.students.length!==studentIds.length)throw Object.assign(new Error('Satu atau lebih siswa tidak ditemukan.'),{status:404});
+  return plan;
+}
+app.post('/api/students/bulk-class/preview',allow('admin'),asyncRoute(async(req,res)=>{
+  const {studentIds,className}=await studentBulkClassRequest(req.body);
+  res.json(await loadStudentBulkClassPlan(pool,studentIds,className));
+}));
+app.post('/api/students/bulk-class',allow('admin'),asyncRoute(async(req,res)=>{
+  const {studentIds,className}=await studentBulkClassRequest(req.body);
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const plan=await loadStudentBulkClassPlan(client,studentIds,className,true);
+    const moving=plan.students.filter(student=>student.status==='will_move');
+    for(const student of moving){
+      await client.query('UPDATE users SET class_name=$2 WHERE id=$1',[student.id,className]);
+      for(const change of student.roomChanges){
+        if(change.action==='updated')await client.query('UPDATE exam_room_students SET class_name=$3 WHERE room_id=$1 AND student_id=$2',[change.roomId,student.id,className]);
+        else await client.query('DELETE FROM exam_room_students WHERE room_id=$1 AND student_id=$2',[change.roomId,student.id]);
+      }
+    }
+    await audit(client,req.session.user.id,'student.bulk_class',{className,studentIds:moving.map(student=>student.id),summary:plan.summary,blocked:plan.students.filter(student=>student.status==='blocked').map(student=>student.id)});
+    await client.query('COMMIT');
+    res.json(plan);
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }));
 app.post('/api/students/import',allow('admin'),asyncRoute(async(req,res)=>{
