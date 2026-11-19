@@ -994,6 +994,7 @@ app.delete('/api/subjects/:id',allow('admin'),asyncRoute(async(req,res)=>{
   res.json({ok:true,id});
 }));
 app.get('/api/students',allow('admin','teacher'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT id,username,full_name AS name,class_name AS "className",active,
+  EXISTS(SELECT 1 FROM exam_sessions es WHERE es.student_id=u.id AND es.status='in_progress') AS "activeExam",
   COALESCE((SELECT jsonb_agg(jsonb_build_object('id',er.id,'name',er.name,'className',ers.class_name) ORDER BY er.name)
     FROM exam_room_students ers JOIN exam_rooms er ON er.id=ers.room_id WHERE ers.student_id=u.id),'[]'::jsonb) AS rooms
   FROM users u
@@ -1033,6 +1034,10 @@ app.put('/api/students/:id',allow('admin'),asyncRoute(async(req,res)=>{
     const before=await client.query("SELECT id,username,full_name AS name,class_name AS \"className\" FROM users WHERE id=$1 AND role='student' FOR UPDATE",[id]);
     if(!before.rowCount)throw Object.assign(new Error('Siswa tidak ditemukan.'),{status:404});
     const previous=before.rows[0];
+    if(previous.className!==className){
+      const active=await client.query("SELECT 1 FROM exam_sessions WHERE student_id=$1 AND status='in_progress' LIMIT 1",[id]);
+      if(active.rowCount)throw Object.assign(new Error('Siswa sedang mengerjakan ujian aktif. Selesaikan ujian sebelum memindahkan kelas.'),{status:409});
+    }
     const updated=await client.query('UPDATE users SET full_name=$2,class_name=$3 WHERE id=$1 RETURNING id,username,full_name AS name,class_name AS "className",active',[id,name,className]);
     const roomChanges=[];
     if(previous.className!==className){
