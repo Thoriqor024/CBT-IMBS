@@ -2059,7 +2059,7 @@ app.get('/api/exams/:id/student-grades',allow('admin','teacher'),requireExamScop
   res.json({ exam, students: q.rows });
 }));
 app.get('/api/monitor',allow('admin','teacher','pengawas'),asyncRoute(async(req,res)=>{
-  const q=await pool.query(`SELECT e.id AS "examId",e.title AS "examTitle",e.status AS "examStatus",es.id,es.student_id AS "studentId",es.status,
+  const q=await pool.query(`SELECT e.id AS "examId",e.title AS "examTitle",e.status AS "examStatus",e.session_number AS "sessionNumber",to_char(e.session_date,'YYYY-MM-DD') AS "sessionDate",to_char(e.session_start,'HH24:MI') AS "sessionStart",to_char(e.session_end,'HH24:MI') AS "sessionEnd",es.id,es.student_id AS "studentId",es.status,
       es.violation_count AS "violationCount",es.final_score AS score,es.last_ping_at AS "lastPingAt",u.full_name AS name,u.username,u.class_name AS "className",mon_room.name AS "roomName",
       count(ve.id) FILTER(WHERE ve.review_status='pending')::int AS "pendingViolationCount",
       (es.violation_count+count(ve.id) FILTER(WHERE ve.review_status='pending'))>=${getViolationThreshold()} AS "violationReviewRequired",
@@ -2373,7 +2373,7 @@ app.put('/api/results/:examId/:studentId/final-score',allow('admin','teacher'),r
   finally{client.release();}
 }));
 app.get('/api/results',allow('admin','teacher'),asyncRoute(async(req,res)=>{
-  const q=await pool.query(`SELECT e.id AS "examId",es.student_id AS "studentId",e.title,e.class_name AS "className",
+  const q=await pool.query(`SELECT e.id AS "examId",es.student_id AS "studentId",e.title,e.class_name AS "className",e.session_number AS "sessionNumber",to_char(e.session_date,'YYYY-MM-DD') AS "sessionDate",to_char(e.session_start,'HH24:MI') AS "sessionStart",to_char(e.session_end,'HH24:MI') AS "sessionEnd",
       u.class_name AS "studentClassName",u.full_name AS "studentName",u.username,es.status,es.final_score AS "finalScore",es.finished_at AS "finishedAt",
       es.violation_count AS "violationCount",
       COALESCE(overview.mc_correct_count,0)::int AS "mcCorrectCount",

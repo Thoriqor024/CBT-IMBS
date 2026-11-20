@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from './api';
-import { RefreshCw, Clock3, ChevronDown, ChevronUp, Wifi, WifiOff, Check, X, CircleAlert, RotateCcw, Search, DoorOpen } from 'lucide-react';
+import { RefreshCw, Clock3, ChevronDown, ChevronUp, Wifi, WifiOff, Check, X, CircleAlert, RotateCcw, Search, DoorOpen, ClipboardList } from 'lucide-react';
 
 const eventLabels = {
   tab_hidden: 'Tab ujian tersembunyi',
@@ -13,13 +13,14 @@ const eventLabels = {
   admin_reset: 'Sesi dipulihkan oleh pengawas',
 };
 
-export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onReviewSession, onViolation, onReset, canRecordViolation = false }) {
+export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onReviewSession, onViolation, onReset, canRecordViolation = false, isPengawas = false }) {
   const [sessions, setSessions] = useState([]);
   const [expanded, setExpanded] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
   const [room, setRoom] = useState('all');
+  const [exam, setExam] = useState(isPengawas ? '' : 'all');
 
   const refresh = useCallback(async () => {
     setError('');
@@ -41,8 +42,25 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
 
   const isViolation = student => student.status === 'locked' || Number(student.violationCount) > 0 ||
     (student.events || []).some(event => event.code !== 'admin_reset' && ['pending', 'confirmed'].includes(event.reviewStatus));
-  const rooms = useMemo(() => [...new Set(sessions.map(session => session.roomName).filter(Boolean))].sort((left, right) => left.localeCompare(right, 'id-ID')), [sessions]);
-  const scopedSessions = useMemo(() => room === 'all' ? sessions : sessions.filter(session => session.roomName === room), [sessions, room]);
+  const sessionOptions = useMemo(() => {
+    const options = new Map();
+    sessions.forEach(session => {
+      const id = String(session.examId);
+      if (!options.has(id)) options.set(id, { id, label: monitorSessionLabel(session) });
+    });
+    return [...options.values()].sort((left, right) => left.label.localeCompare(right.label, 'id-ID'));
+  }, [sessions]);
+  useEffect(() => {
+    if (!isPengawas) return;
+    const ids = sessionOptions.map(option => option.id);
+    if (!ids.includes(exam)) setExam(ids[0] || '');
+  }, [isPengawas, exam, sessionOptions]);
+  const examSessions = useMemo(() => exam === 'all' ? sessions : sessions.filter(session => String(session.examId) === exam), [sessions, exam]);
+  const rooms = useMemo(() => [...new Set(examSessions.map(session => session.roomName).filter(Boolean))].sort((left, right) => left.localeCompare(right, 'id-ID')), [examSessions]);
+  useEffect(() => {
+    if (room !== 'all' && !rooms.includes(room)) setRoom('all');
+  }, [room, rooms]);
+  const scopedSessions = useMemo(() => room === 'all' ? examSessions : examSessions.filter(session => session.roomName === room), [examSessions, room]);
   const violations = useMemo(() => scopedSessions.filter(isViolation), [scopedSessions]);
   const completed = useMemo(() => scopedSessions.filter(student => student.status === 'completed' && !isViolation(student)), [scopedSessions]);
   const active = useMemo(() => scopedSessions.filter(student => student.status === 'in_progress' && !isViolation(student)), [scopedSessions]);
@@ -52,8 +70,8 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
 
   return <>
     <div className="page-title-row">
-      <div><div className="eyebrow">PEMANTAUAN LANGSUNG</div><h1>Pantau ujian</h1><p>Peserta aktif dan catatan pelanggaran diperbarui otomatis setiap 5 detik.</p></div>
-      <div className="button-row">{rooms.length > 0 && <label className="monitor-room-filter"><DoorOpen size={14}/><select value={room} onChange={event => setRoom(event.target.value)} aria-label="Filter ruang ujian"><option value="all">Semua ruang</option>{rooms.map(name => <option key={name} value={name}>{name}</option>)}</select></label>}<button className="secondary" onClick={refresh}><RefreshCw size={15}/> Perbarui</button><button className="secondary" onClick={showAll}><Clock3 size={15}/> Tampilkan log</button></div>
+      <div><div className="eyebrow">PEMANTAUAN LANGSUNG</div><h1>Pantau ujian</h1><p>{isPengawas ? 'Hanya sesi dan ruang yang ditugaskan kepada Anda yang dimuat.' : 'Peserta aktif dan catatan pelanggaran diperbarui otomatis setiap 5 detik.'}</p></div>
+      <div className="button-row">{sessionOptions.length > 0 && <label className="monitor-room-filter monitor-session-filter"><ClipboardList size={14}/><select value={isPengawas ? (exam || sessionOptions[0]?.id || '') : exam} onChange={event => setExam(event.target.value)} aria-label="Filter sesi ujian">{!isPengawas && <option value="all">Semua sesi</option>}{sessionOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>}{rooms.length > 0 && <label className="monitor-room-filter"><DoorOpen size={14}/><select value={room} onChange={event => setRoom(event.target.value)} aria-label="Filter ruang ujian"><option value="all">Semua ruang</option>{rooms.map(name => <option key={name} value={name}>{name}</option>)}</select></label>}<button className="secondary" onClick={refresh}><RefreshCw size={15}/> Perbarui</button><button className="secondary" onClick={showAll}><Clock3 size={15}/> Tampilkan log</button></div>
     </div>
     {error && <div className="monitor-dashboard-error" role="alert"><CircleAlert size={15}/>{error}</div>}
     <div className="admin-monitor-grid">
@@ -112,6 +130,12 @@ function FragmentRow({ student, events, expanded, toggle, held, isActive, online
   </>;
 }
 
+function monitorSessionLabel(session) {
+  const number = Number(session.sessionNumber);
+  const date = session.sessionDate ? new Date(`${session.sessionDate}T00:00:00`).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+  const title = session.examTitle || 'Ujian';
+  return number ? `Sesi ${number}${date ? ` · ${date}` : ''} · ${title}` : title;
+}
 function statusLabel(status) { return ({ completed: 'SELESAI', not_started: 'BELUM MULAI', locked: 'DIBLOKIR' })[status] || String(status || '').toUpperCase(); }
 function eventStatus(event) { return event.code === 'admin_reset' ? 'TINDAKAN PENGAWAS' : event.reviewStatus === 'pending' ? 'MENUNGGU TINJAUAN' : event.reviewStatus === 'confirmed' ? 'DIKONFIRMASI' : 'FALSE POSITIVE'; }
 function formatDate(value) { return value ? new Date(value).toLocaleString('id-ID') : 'Waktu tidak tersedia'; }

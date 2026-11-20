@@ -295,11 +295,14 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
     const adminMonitor = await request(baseUrl, '/monitor', { cookie: adminCookie });
     assert.equal(adminMonitor.status, 200);
     assert.deepEqual([...new Set(adminMonitor.data.map(row => row.examId))].sort(), [assignedExamId, unassignedExamId].sort());
+    const adminResults = await request(baseUrl, '/results', { cookie: adminCookie });
+    assert.equal(adminResults.status, 200, 'Hasil ujian harus dapat dimuat untuk filter sesi admin.');
 
     const proctorMonitor = await request(baseUrl, '/monitor', { cookie: proctorCookie });
     assert.equal(proctorMonitor.status, 200);
     assert.deepEqual([...new Set(proctorMonitor.data.map(row => row.examId))], [assignedExamId], 'Peserta hanya berasal dari ujian yang di-assign.');
     assert.deepEqual(proctorMonitor.data.map(row => row.name), ['Student A']);
+    assert.ok(proctorMonitor.data.every(row => 'sessionNumber' in row && 'sessionDate' in row), 'Monitor harus membawa nomor dan tanggal sesi untuk filter.');
 
     const unassignedMonitor = await request(baseUrl, '/monitor', { cookie: otherProctorCookie });
     assert.equal(unassignedMonitor.status, 200);
