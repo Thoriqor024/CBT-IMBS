@@ -3,6 +3,7 @@ import { AlertTriangle, BookOpen, Check, CheckCircle2, ChevronLeft, ChevronLeftI
 import { api } from './api';
 import { deleteSessionDrafts, getDrafts, markDraftSynced, saveDraft, verifyEncryptedStorage } from './examStorage';
 import { FormulaText } from './FormulaText.jsx';
+import { examSessionWindow } from '../server/examSchedule.js';
 import { ARABIC_HARAKAT, ARABIC_KEYBOARD_ROWS, resolveArabicKeyPress, isRtlContext } from './arabicKeyboardData.js';
 
 function createSubmitIdempotencyKey(){
@@ -24,6 +25,7 @@ export default function StudentPortal({user,onLogout}) {
   const [screenOverride,setScreenOverride]=useState(false);
   const [screenState,setScreenState]=useState('idle');
   const [screenMessage,setScreenMessage]=useState('');
+  const [scheduleNow,setScheduleNow]=useState(()=>new Date());
 
   const loadExams=async()=>{
     setError('');
@@ -31,6 +33,10 @@ export default function StudentPortal({user,onLogout}) {
     catch(err){setError(err.message);}
     finally{setLoading(false);}
   };
+  useEffect(()=>{
+    const timer=setInterval(()=>setScheduleNow(new Date()),30000);
+    return()=>clearInterval(timer);
+  },[]);
   useEffect(()=>{
     try{
       const saved=localStorage.getItem('imbs_active_exam_session');
@@ -51,6 +57,10 @@ export default function StudentPortal({user,onLogout}) {
   const prepareAndStart=async()=>{
     if(!selectedExam)return;
     const isNew=selectedExam.sessionStatus==='not_started';
+    if(isNew){
+      const schedule=examSessionWindow(selectedExam,{now:new Date()});
+      if(!schedule.open){setError(portalScheduleNote(selectedExam,schedule));return;}
+    }
     if(isNew&&!/^\d{4,6}$/.test(entryPin)){
       setError('Masukkan PIN ujian 4–6 digit dari pengawas.');return;
     }
@@ -110,18 +120,19 @@ export default function StudentPortal({user,onLogout}) {
       {error&&<div className="portal-error" role="alert"><AlertTriangle size={16}/>{error}<button onClick={loadExams}>Coba lagi</button></div>}
       <div className="portal-section-heading"><h2>Daftar ujian</h2><button onClick={loadExams} disabled={loading}><RefreshCw size={14}/> Perbarui</button></div>
       {loading?<div className="portal-empty"><RefreshCw size={22}/><b>Memuat ujian¦</b></div>:
-        exams.length?<div className="portal-exams">{exams.map(exam=><article className="portal-exam" key={exam.sessionId}>
+        exams.length?<div className="portal-exams">{exams.map(exam=>{const schedule=examSessionWindow(exam,{now:scheduleNow});return <article className="portal-exam" key={exam.sessionId}>
           <i className="portal-exam-icon"><BookOpen size={19}/></i>
           <div className="portal-exam-info"><span className="portal-exam-state">{portalStatus(exam.sessionStatus,exam.examStatus)}</span>
             <h3>{exam.title}</h3><p>{exam.subject} Â· {exam.grade ? `Kelas ${exam.grade}  ` : ''}{exam.topic}  {exam.durationMinutes} menit</p>
             {exam.sessionDate&&<small className="portal-schedule"><Clock3 size={12}/> {sessionScheduleLabel(exam)}</small>}
+            {exam.sessionStatus==='not_started'&&!schedule.open&&<small className="portal-warning">{portalScheduleNote(exam,schedule)}</small>}
             {exam.sessionStatus==='not_started'&&exam.examStatus==='active'&&!exam.pinReady&&<small className="portal-warning">Menunggu PIN dari pengawas.</small>}
           </div>
-          {exam.sessionStatus==='not_started'&&exam.examStatus==='active'&&<button className="portal-start" disabled={!exam.pinReady} onClick={()=>selectExam(exam)}><LockKeyhole size={15}/> Masukkan PIN</button>}
+          {exam.sessionStatus==='not_started'&&exam.examStatus==='active'&&<button className="portal-start" disabled={!exam.pinReady||!schedule.open} title={schedule.open?'Masukkan PIN dari pengawas':portalScheduleNote(exam,schedule)} onClick={()=>selectExam(exam)}><LockKeyhole size={15}/> Masukkan PIN</button>}
           {exam.sessionStatus==='in_progress'&&<button className="portal-start" onClick={()=>selectExam(exam)}><BookOpen size={15}/> Lanjutkan</button>}
           {exam.sessionStatus==='completed'&&<span className="portal-done"><CheckCircle2 size={15}/> Selesai Nilai guru: {exam.score??'menunggu input'}</span>}
           {exam.sessionStatus==='locked'&&<span className="portal-locked"><AlertTriangle size={15}/> Terkunci Nilai guru: {exam.score??'menunggu input'}</span>}
-        </article>)}</div>:<div className="portal-empty"><BookOpen size={24}/><b>Belum ada ujian</b><span>Ujian akan muncul setelah admin mengaktifkannya.</span></div>}
+        </article>;})}</div>:<div className="portal-empty"><BookOpen size={24}/><b>Belum ada ujian</b><span>Ujian akan muncul setelah admin mengaktifkannya.</span></div>}
       <aside className="portal-rules"><b>Catatan sebelum mulai</b><ul><li>Siapkan satu layar dan sambungkan jaringan sekolah.</li><li>Jawaban disimpan terenkripsi di perangkat sebelum disinkronkan.</li><li>Jika jaringan terputus, jawaban tetap tersimpan di perangkat. Sambungkan kembali untuk mengirim atau mengumpulkan ujian.</li><li>Pemeriksaan layar bergantung pada dukungan dan izin browser; pengawas tetap perlu memeriksa perangkat yang tidak mendukungnya.</li></ul></aside>
     </main>
     {selectedExam&&<div className="exam-preflight-backdrop" role="presentation">
@@ -678,5 +689,10 @@ function portalStatus(sessionStatus,examStatus){
 }
 function formatSessionDate(value){if(!value)return '';const [y,m,d]=String(value).slice(0,10).split('-').map(Number);const date=new Date(y,(m||1)-1,d||1);return Number.isNaN(date.getTime())?'':date.toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
 function sessionScheduleLabel(exam){return exam?.sessionDate?`Sesi ${exam.sessionNumber} · ${formatSessionDate(exam.sessionDate)} · ${exam.sessionStart}–${exam.sessionEnd}`:'';}
+function portalScheduleNote(exam,schedule){
+  if(!schedule.configured)return 'Sesi ujian belum dijadwalkan. Hubungi pengawas.';
+  const timing=`${formatSessionDate(exam.sessionDate)} pukul ${exam.sessionStart}–${exam.sessionEnd}`;
+  return schedule.state==='after'?`Jadwal ujian ${timing} sudah berakhir.`:`Ujian dapat dimulai pada ${timing}.`;
+}
 
 function formatTime(value){const seconds=Math.max(0,Number(value)||0);return `${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')}`;}

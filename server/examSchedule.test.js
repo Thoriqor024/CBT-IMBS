@@ -16,6 +16,7 @@ test('requires a complete session schedule before the exam can be run', () => {
   const missingSession = examSessionWindow({ sessionNumber: null, sessionDate: null, sessionStart: null, sessionEnd: null });
   assert.equal(missingSession.configured, false);
   assert.equal(missingSession.open, false);
+  assert.equal(missingSession.state, 'missing');
   assert.match(missingSession.message, /Tentukan sesi ujian/);
 
   const missingEnd = examSessionWindow({ ...scheduledExam, sessionEnd: null });
@@ -28,11 +29,16 @@ test('requires a complete session schedule before the exam can be run', () => {
 
 test('opens only on the session date inside the start–end window', () => {
   assert.equal(examSessionWindow(scheduledExam, { now: jakarta('2026-11-20T01:00:00Z') }).open, false);
+  assert.equal(examSessionWindow(scheduledExam, { now: jakarta('2026-11-20T01:00:00Z') }).state, 'before');
   assert.equal(examSessionWindow(scheduledExam, { now: jakarta('2026-11-21T00:59:00Z') }).open, false);
+  assert.equal(examSessionWindow(scheduledExam, { now: jakarta('2026-11-21T00:59:00Z') }).state, 'before');
   assert.equal(examSessionWindow(scheduledExam, { now: jakarta('2026-11-21T01:00:00Z') }).open, true);
+  assert.equal(examSessionWindow(scheduledExam, { now: jakarta('2026-11-21T01:00:00Z') }).state, 'open');
   assert.equal(examSessionWindow(scheduledExam, { now: jakarta('2026-11-21T02:59:00Z') }).open, true);
   assert.equal(examSessionWindow(scheduledExam, { now: jakarta('2026-11-21T03:00:00Z') }).open, false);
+  assert.equal(examSessionWindow(scheduledExam, { now: jakarta('2026-11-21T03:00:00Z') }).state, 'after');
   assert.equal(examSessionWindow(scheduledExam, { now: jakarta('2026-11-22T01:00:00Z') }).open, false);
+  assert.equal(examSessionWindow(scheduledExam, { now: jakarta('2026-11-22T01:00:00Z') }).state, 'after');
 });
 
 test('explains why an exam outside its schedule cannot be run', () => {

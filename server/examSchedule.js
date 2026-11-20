@@ -62,6 +62,7 @@ export function examSessionWindow(exam, { now = new Date(), timeZone = DEFAULT_E
     return {
       configured: false,
       open: false,
+      state: 'missing',
       startsAt: null,
       endsAt: null,
       message: 'Tentukan sesi ujian (hari/tanggal dan jam mulai–berakhir) sebelum menjalankan ujian.',
@@ -71,6 +72,8 @@ export function examSessionWindow(exam, { now = new Date(), timeZone = DEFAULT_E
   const scheduleLabel = `sesi ${sessionNumber} pada ${formatSessionDateLabel(sessionDate)} pukul ${sessionStart}–${sessionEnd}`;
   const { date: localDate, time: localTime } = zonedParts(now, timeZone);
   const open = localDate === sessionDate && localTime >= sessionStart && localTime < sessionEnd;
+  const beforeSchedule = localDate < sessionDate || (localDate === sessionDate && localTime < sessionStart);
+  const state = open ? 'open' : beforeSchedule ? 'before' : 'after';
 
   let message;
   if (open) message = `Ujian ${scheduleLabel} sedang dalam jadwal.`;
@@ -82,6 +85,7 @@ export function examSessionWindow(exam, { now = new Date(), timeZone = DEFAULT_E
   return {
     configured: true,
     open,
+    state,
     startsAt: `${sessionDate}T${sessionStart}`,
     endsAt: `${sessionDate}T${sessionEnd}`,
     sessionNumber,
