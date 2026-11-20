@@ -453,6 +453,14 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
     const combinedSession = name => combinedMonitorAdmin.data.students.find(row => row.name === name).id;
     const sessionB = combinedSession('Student B');
 
+    const combinedProctorAccess = await request(baseUrl, `/teachers/${accountId('it-pengawas-b')}/access`, {
+      method: 'PUT', cookie: adminCookie, body: { role: 'pengawas', roomIds: [roomOne.data.id], examIds: [combinedExam.data.id] },
+    });
+    assert.equal(combinedProctorAccess.status, 200, JSON.stringify(combinedProctorAccess.data));
+    const combinedProctorExams = await request(baseUrl, '/exams', { cookie: otherProctorCookie });
+    const combinedExamForProctor = combinedProctorExams.data.find(exam => exam.id === combinedExam.data.id);
+    assert.equal(combinedExamForProctor.participants, 1, 'Akses sesi langsung tidak boleh membuka hitungan peserta ruang lain.');
+
     const roomScopedDetail = await request(baseUrl, `/exams/${combinedExam.data.id}/monitor`, { cookie: otherProctorCookie });
     assert.equal(roomScopedDetail.status, 200);
     assert.deepEqual(roomScopedDetail.data.students.map(row => row.name), ['Student A'], 'Pengawas Ruang 01 hanya melihat peserta ruangnya.');
