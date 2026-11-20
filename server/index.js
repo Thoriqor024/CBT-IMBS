@@ -1378,10 +1378,12 @@ app.put('/api/teachers/:id/access',allow('admin'),asyncRoute(async(req,res)=>{
     }else{
       await client.query('DELETE FROM question_bank_teachers WHERE teacher_id=$1',[req.params.id]);
     }
-    const nextExamNames=examIds.length?(await client.query('SELECT title FROM exams WHERE id=ANY($1::bigint[]) ORDER BY title',[examIds])).rows.map(row=>row.title):[];
-    const nextRoomNames=roomIds.length?(await client.query('SELECT name FROM exam_rooms WHERE id=ANY($1::bigint[]) ORDER BY name',[roomIds])).rows.map(row=>row.name):[];
-    const examNameById=new Map(examIds.length?(await client.query('SELECT id,title FROM exams WHERE id=ANY($1::bigint[])',[examIds])).rows.map(row=>[Number(row.id),row.title]):[]);
-    const roomNameById=new Map(roomIds.length?(await client.query('SELECT id,name FROM exam_rooms WHERE id=ANY($1::bigint[])',[roomIds])).rows.map(row=>[Number(row.id),row.name]):[]);
+    const nextExamRows=examIds.length?(await client.query('SELECT id,title FROM exams WHERE id=ANY($1::bigint[]) ORDER BY title',[examIds])).rows:[];
+    const nextRoomRows=roomIds.length?(await client.query('SELECT id,name FROM exam_rooms WHERE id=ANY($1::bigint[]) ORDER BY name',[roomIds])).rows:[];
+    const nextExamNames=nextExamRows.map(row=>row.title);
+    const nextRoomNames=nextRoomRows.map(row=>row.name);
+    const examNameById=new Map(nextExamRows.map(row=>[Number(row.id),row.title]));
+    const roomNameById=new Map(nextRoomRows.map(row=>[Number(row.id),row.name]));
     await audit(client,req.session.user.id,'staff.update',{staffId:Number(req.params.id),previousRole:teacher.rows[0].role,role,previous,previousExams,previousRooms,next:{classNames,subjectIds,examIds,roomIds,bankIds,examNames:nextExamNames,roomNames:nextRoomNames}});
     if(role==='pengawas'||previousExams.length||previousRooms.length)await audit(client,req.session.user.id,'staff.assignment',{staffId:Number(req.params.id),previousExams:previousExams.map(exam=>({id:exam.id,title:exam.title})),previousRooms:previousRooms.map(room=>({id:room.id,name:room.name})),exams:examIds.map(id=>({id,title:examNameById.get(id)??null})),rooms:roomIds.map(id=>({id,name:roomNameById.get(id)??null}))});
     await client.query('COMMIT');

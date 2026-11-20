@@ -26,10 +26,13 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
   const refresh = useCallback(async () => {
     setError('');
     try {
-      const all = await api('/monitor');
-      setCatalog(all);
-      if (exam && exam !== 'all') setSessions(await api(`/monitor?examId=${encodeURIComponent(exam)}`));
-      else setSessions(all);
+      if (exam && exam !== 'all') {
+        setSessions(await api(`/monitor?examId=${encodeURIComponent(exam)}`));
+      } else {
+        const all = await api('/monitor');
+        setCatalog(all);
+        setSessions(all);
+      }
     } catch (err) {
       setError(err.message || 'Data pemantauan tidak dapat dimuat.');
     } finally {
