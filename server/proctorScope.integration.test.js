@@ -435,6 +435,64 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
     const roomMonitorForbidden = await request(baseUrl, `/exams/${roomExam.data.id}/monitor`, { cookie: proctorCookie });
     assert.equal(roomMonitorForbidden.status, 404, 'Pengawas tanpa ruang tersebut tidak boleh membuka monitor.');
 
+    // Satu ujian memakai dua ruang: pengawas Ruang 01 hanya boleh melihat dan mengaksi peserta Ruang 01.
+    const combinedExam = await request(baseUrl, '/exams', {
+      method: 'POST', cookie: adminCookie,
+      body: { title: 'Ujian Ruang Gabungan', subjectIds: [subject.rows[0].id], roomIds: [roomOne.data.id, roomTwo.data.id], mcCount: 1, essayCount: 0, durationMinutes: 30 },
+    });
+    assert.equal(combinedExam.status, 201, JSON.stringify(combinedExam.data));
+    assert.equal(combinedExam.data.participants, 2, 'Ujian gabungan harus memuat peserta dari dua ruang.');
+    await pool.query("UPDATE exam_sessions SET status='in_progress',started_at=NOW() WHERE exam_id=$1", [combinedExam.data.id]);
+
+    const combinedMonitorAdmin = await request(baseUrl, `/exams/${combinedExam.data.id}/monitor`, { cookie: adminCookie });
+    assert.equal(combinedMonitorAdmin.status, 200);
+    assert.deepEqual(combinedMonitorAdmin.data.students.map(row => row.name).sort(), ['Student A', 'Student B']);
+    const combinedSession = name => combinedMonitorAdmin.data.students.find(row => row.name === name).id;
+    const sessionB = combinedSession('Student B');
+
+    const roomScopedDetail = await request(baseUrl, `/exams/${combinedExam.data.id}/monitor`, { cookie: otherProctorCookie });
+    assert.equal(roomScopedDetail.status, 200);
+    assert.deepEqual(roomScopedDetail.data.students.map(row => row.name), ['Student A'], 'Pengawas Ruang 01 hanya melihat peserta ruangnya.');
+    assert.ok(roomScopedDetail.data.students.every(row => row.roomName === 'Ruang 01'));
+
+    const roomScopedGlobal = await request(baseUrl, '/monitor', { cookie: otherProctorCookie });
+    assert.equal(roomScopedGlobal.status, 200);
+    assert.ok(roomScopedGlobal.data.some(row => row.examId === combinedExam.data.id && row.name === 'Student A'), 'Peserta ruang sendiri harus tetap terlihat di monitor global.');
+    assert.ok(roomScopedGlobal.data.every(row => row.roomName === 'Ruang 01' && row.name !== 'Student B'), 'Monitor global tidak boleh membocorkan peserta ruang lain.');
+
+    const roomViolationAllowed = await request(baseUrl, `/exams/${combinedExam.data.id}/monitor/${combinedSession('Student A')}/violation`, {
+      method: 'POST', cookie: otherProctorCookie, body: { reason: 'Pemeriksaan ruang sendiri' },
+    });
+    assert.equal(roomViolationAllowed.status, 200, JSON.stringify(roomViolationAllowed.data));
+
+    const thresholdRow = await pool.query('SELECT violation_threshold AS threshold FROM school_settings WHERE id=1');
+    const threshold = Number(thresholdRow.rows[0]?.threshold || 2);
+    await pool.query("UPDATE exam_sessions SET violation_count=$2,status='in_progress' WHERE id=$1", [sessionB, threshold]);
+    const blockRoomB = await request(baseUrl, `/exams/${combinedExam.data.id}/monitor/${sessionB}/decision`, {
+      method: 'POST', cookie: otherProctorCookie, body: { decision: 'block', reason: 'Tidak boleh lintas ruang' },
+    });
+    assert.equal(blockRoomB.status, 404, 'Pengawas Ruang 01 tidak boleh memblokir peserta Ruang 02.');
+    const sessionBAfterBlock = await pool.query('SELECT status FROM exam_sessions WHERE id=$1', [sessionB]);
+    assert.equal(sessionBAfterBlock.rows[0].status, 'in_progress', 'Percobaan blokir lintas ruang tidak boleh mengubah sesi.');
+
+    const pendingEvent = await pool.query("INSERT INTO violation_events(session_id,code,detail,review_status) VALUES($1,'tab_hidden','Uji lintas ruang','pending') RETURNING id", [sessionB]);
+    const reviewRoomB = await request(baseUrl, `/exams/${combinedExam.data.id}/monitor/${sessionB}/events/${pendingEvent.rows[0].id}/review`, {
+      method: 'POST', cookie: otherProctorCookie, body: { decision: 'confirm', reason: 'Tidak boleh lintas ruang' },
+    });
+    assert.equal(reviewRoomB.status, 404, 'Pengawas Ruang 01 tidak boleh meninjau sinyal peserta Ruang 02.');
+    const eventAfterReview = await pool.query('SELECT review_status FROM violation_events WHERE id=$1', [pendingEvent.rows[0].id]);
+    assert.equal(eventAfterReview.rows[0].review_status, 'pending', 'Sinyal lintas ruang tidak boleh berubah status.');
+
+    const resetRoomB = await request(baseUrl, `/exams/${combinedExam.data.id}/monitor/${sessionB}/reset`, {
+      method: 'POST', cookie: otherProctorCookie, body: { reason: 'Tidak boleh lintas ruang' },
+    });
+    assert.equal(resetRoomB.status, 404, 'Pengawas Ruang 01 tidak boleh mereset sesi peserta Ruang 02.');
+
+    const violationRoomB = await request(baseUrl, `/exams/${combinedExam.data.id}/monitor/${sessionB}/violation`, {
+      method: 'POST', cookie: otherProctorCookie, body: { reason: 'Tidak boleh lintas ruang' },
+    });
+    assert.equal(violationRoomB.status, 404, 'Pengawas Ruang 01 tidak boleh mencatat pelanggaran peserta Ruang 02.');
+
     const teacherList = await request(baseUrl, '/teachers', { cookie: adminCookie });
     const proctorBRooms = teacherList.data.find(teacher => teacher.username === 'it-pengawas-b').rooms;
     assert.deepEqual(proctorBRooms.map(room => room.name), ['Ruang 01']);

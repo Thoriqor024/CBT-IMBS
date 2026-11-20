@@ -307,6 +307,14 @@ async function proctorCanAccessExam(userId,examId,client=pool) {
   const result=await client.query('SELECT EXISTS(SELECT 1 FROM exams e WHERE e.id=$2 AND (EXISTS(SELECT 1 FROM exam_proctors ep WHERE ep.exam_id=e.id AND ep.proctor_id=$1) OR EXISTS(SELECT 1 FROM exam_room_links erl JOIN exam_room_proctors erp ON erp.room_id=erl.room_id WHERE erl.exam_id=e.id AND erp.proctor_id=$1))) AS allowed',[userId,examId]);
   return result.rows[0].allowed;
 }
+async function proctorCanAccessSession(userId,examId,sessionId,client=pool) {
+  const result=await client.query(`SELECT EXISTS(SELECT 1 FROM exam_sessions es WHERE es.id=$3 AND es.exam_id=$2 AND (
+    EXISTS(SELECT 1 FROM exam_proctors ep WHERE ep.exam_id=$2 AND ep.proctor_id=$1)
+    OR (es.room_id IS NOT NULL AND EXISTS(SELECT 1 FROM exam_room_proctors erp WHERE erp.proctor_id=$1 AND erp.room_id=es.room_id))
+  )) AS allowed`,[userId,examId,sessionId]);
+  return result.rows[0].allowed;
+}
+
 async function proctorAssignedExams(userId,client=pool) {
   return (await client.query(`SELECT e.id,e.title,e.class_name AS "className" FROM exam_proctors ep
     JOIN exams e ON e.id=ep.exam_id WHERE ep.proctor_id=$1 ORDER BY e.created_at DESC,e.id DESC`,[userId])).rows;
@@ -1881,7 +1889,7 @@ app.get('/api/exams/:id/monitor',allow('admin','teacher','pengawas'),requireExam
   FROM exam_sessions es JOIN users u ON u.id=es.student_id
   LEFT JOIN exam_rooms mon_room ON mon_room.id=es.room_id
   LEFT JOIN violation_events ve ON ve.session_id=es.id
-  WHERE es.exam_id=$1 GROUP BY es.id,u.id,mon_room.name ORDER BY u.full_name`,[req.params.id]),pool.query(`SELECT entry_pin_hash IS NOT NULL AND entry_pin_expires_at>clock_timestamp() AS available,
+  WHERE es.exam_id=$1 AND ($2='admin' OR $2='teacher' OR ($2='pengawas' AND (EXISTS(SELECT 1 FROM exam_proctors ep WHERE ep.exam_id=es.exam_id AND ep.proctor_id=$3) OR (es.room_id IS NOT NULL AND EXISTS(SELECT 1 FROM exam_room_proctors erp WHERE erp.proctor_id=$3 AND erp.room_id=es.room_id))))) GROUP BY es.id,u.id,mon_room.name ORDER BY u.full_name`,[req.params.id,req.session.user.role,req.session.user.id]),pool.query(`SELECT entry_pin_hash IS NOT NULL AND entry_pin_expires_at>clock_timestamp() AS available,
   entry_pin_updated_at AS "issuedAt",entry_pin_expires_at AS "expiresAt" FROM exams WHERE id=$1`,[req.params.id])]);
   res.json({students:q.rows,pin:pinResult.rows[0]||{available:false,issuedAt:null,expiresAt:null}});
 }));
@@ -2061,7 +2069,7 @@ app.get('/api/monitor',allow('admin','teacher','pengawas'),asyncRoute(async(req,
     LEFT JOIN violation_events ve ON ve.session_id=es.id
     WHERE (es.status IN ('in_progress','completed','locked') OR es.violation_count>0 OR EXISTS(
       SELECT 1 FROM violation_events pending WHERE pending.session_id=es.id AND pending.review_status IN ('pending','confirmed') AND pending.code<>'admin_reset'
-    )) AND ($1='admin' OR ($1='pengawas' AND (EXISTS(SELECT 1 FROM exam_proctors ep WHERE ep.exam_id=e.id AND ep.proctor_id=$2) OR EXISTS(SELECT 1 FROM exam_room_links erl JOIN exam_room_proctors erp ON erp.room_id=erl.room_id WHERE erl.exam_id=e.id AND erp.proctor_id=$2))) OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*')))))
+    )) AND ($1='admin' OR ($1='pengawas' AND (EXISTS(SELECT 1 FROM exam_proctors ep WHERE ep.exam_id=e.id AND ep.proctor_id=$2) OR (es.room_id IS NOT NULL AND EXISTS(SELECT 1 FROM exam_room_proctors erp WHERE erp.proctor_id=$2 AND erp.room_id=es.room_id)))) OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*')))))
     GROUP BY e.id,es.id,u.id,mon_room.name ORDER BY e.created_at DESC,u.full_name`,[req.session.user.role,req.session.user.id]);
   res.json(q.rows);
 }));
@@ -2183,6 +2191,7 @@ app.post('/api/exams/:id/monitor/:sessionId/events/:eventId/review',allow('admin
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
+    if(req.session.user.role==='pengawas'&&!await proctorCanAccessSession(req.session.user.id,req.params.id,req.params.sessionId,client))throw Object.assign(new Error('Peserta sesi tidak ditemukan.'),{status:404});
     const session=await client.query(`SELECT es.id,es.status,es.violation_count,es.started_at,e.duration_minutes
       FROM exam_sessions es JOIN exams e ON e.id=es.exam_id
       WHERE es.id=$1 AND es.exam_id=$2 FOR UPDATE OF es`,[req.params.sessionId,req.params.id]);
@@ -2216,6 +2225,7 @@ app.post('/api/exams/:id/monitor/:sessionId/decision',allow('admin','teacher','p
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
+    if(req.session.user.role==='pengawas'&&!await proctorCanAccessSession(req.session.user.id,req.params.id,req.params.sessionId,client))throw Object.assign(new Error('Peserta sesi tidak ditemukan.'),{status:404});
     const session=await client.query(`SELECT es.id,es.status,es.violation_count,
         (SELECT count(*)::int FROM violation_events ve WHERE ve.session_id=es.id AND ve.review_status='pending') AS pending_violation_count
       FROM exam_sessions es WHERE es.id=$1 AND es.exam_id=$2 FOR UPDATE OF es`,[req.params.sessionId,req.params.id]);
@@ -2257,6 +2267,7 @@ app.post('/api/exams/:id/monitor/:sessionId/reset',allow('admin','teacher','peng
   const client=await pool.connect();
   try{
     await client.query('BEGIN');
+    if(req.session.user.role==='pengawas'&&!await proctorCanAccessSession(req.session.user.id,req.params.id,req.params.sessionId,client))throw Object.assign(new Error('Peserta sesi tidak ditemukan.'),{status:404});
     const q=await client.query(`SELECT es.id,es.status,es.started_at,e.duration_minutes,e.status AS exam_status
       FROM exam_sessions es JOIN exams e ON e.id=es.exam_id
       WHERE es.id=$1 AND es.exam_id=$2 FOR UPDATE OF es`,[req.params.sessionId,req.params.id]);
@@ -2312,7 +2323,7 @@ app.post('/api/student/sessions/:sessionId/submit',allow('student'),asyncRoute(a
     throw error;
   }finally{client.release();}
 }));
-app.post('/api/exams/:id/monitor/:sessionId/violation',allow('admin','teacher','pengawas'),requireExamScope,asyncRoute(async(req,res)=>{const reason=String(req.body.reason||'Pelanggaran dicatat pengawas').trim().slice(0,240);if(!reason)return res.status(400).json({error:'Alasan pelanggaran wajib diisi.'});const client=await pool.connect();try{await client.query('BEGIN');const q=await client.query('UPDATE exam_sessions SET violation_count=violation_count+1,status=CASE WHEN violation_count+1>=$3 THEN \'locked\' ELSE status END,final_score=CASE WHEN violation_count+1>=$3 THEN NULL ELSE final_score END,finished_at=CASE WHEN violation_count+1>=$3 THEN NOW() ELSE finished_at END WHERE id=$1 AND exam_id=$2 AND status=\'in_progress\' RETURNING id,status,violation_count AS "violationCount"',[req.params.sessionId,req.params.id,getViolationThreshold()]);if(!q.rowCount)throw Object.assign(new Error('Peserta tidak ditemukan atau tidak sedang ujian.'),{status:404});await client.query('INSERT INTO violation_events(session_id,code,detail,review_status,reviewed_by,review_reason,reviewed_at) VALUES($1,\'admin_report\',$2,\'confirmed\',$3,$2,NOW())',[req.params.sessionId,reason,req.session.user.id]);await audit(client,req.session.user.id,'exam.violation',{examId:Number(req.params.id),sessionId:Number(req.params.sessionId),reason,count:q.rows[0].violationCount});await client.query('COMMIT');res.json({...q.rows[0],reason});}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}}));
+app.post('/api/exams/:id/monitor/:sessionId/violation',allow('admin','teacher','pengawas'),requireExamScope,asyncRoute(async(req,res)=>{const reason=String(req.body.reason||'Pelanggaran dicatat pengawas').trim().slice(0,240);if(!reason)return res.status(400).json({error:'Alasan pelanggaran wajib diisi.'});const client=await pool.connect();try{await client.query('BEGIN');if(req.session.user.role==='pengawas'&&!await proctorCanAccessSession(req.session.user.id,req.params.id,req.params.sessionId,client))throw Object.assign(new Error('Peserta sesi tidak ditemukan.'),{status:404});const q=await client.query('UPDATE exam_sessions SET violation_count=violation_count+1,status=CASE WHEN violation_count+1>=$3 THEN \'locked\' ELSE status END,final_score=CASE WHEN violation_count+1>=$3 THEN NULL ELSE final_score END,finished_at=CASE WHEN violation_count+1>=$3 THEN NOW() ELSE finished_at END WHERE id=$1 AND exam_id=$2 AND status=\'in_progress\' RETURNING id,status,violation_count AS "violationCount"',[req.params.sessionId,req.params.id,getViolationThreshold()]);if(!q.rowCount)throw Object.assign(new Error('Peserta tidak ditemukan atau tidak sedang ujian.'),{status:404});await client.query('INSERT INTO violation_events(session_id,code,detail,review_status,reviewed_by,review_reason,reviewed_at) VALUES($1,\'admin_report\',$2,\'confirmed\',$3,$2,NOW())',[req.params.sessionId,reason,req.session.user.id]);await audit(client,req.session.user.id,'exam.violation',{examId:Number(req.params.id),sessionId:Number(req.params.sessionId),reason,count:q.rows[0].violationCount});await client.query('COMMIT');res.json({...q.rows[0],reason});}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}}));
 
 app.get('/api/results/:examId/:studentId/essays',allow('admin','teacher'),requireResultScope,asyncRoute(async(req,res)=>{
   const q=await pool.query(`SELECT es.id AS "sessionId",eq.question_id AS "questionId",q.prompt,q.points,r.answer,r.essay_score AS "essayScore"
