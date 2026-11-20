@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { examSessionWindow, formatSessionDateLabel, resolveExamTimeZone } from './examSchedule.js';
+import { attachExamSessionSchedule, examSessionWindow, formatSessionDateLabel, resolveExamTimeZone } from './examSchedule.js';
 
 const scheduledExam = {
   sessionNumber: 1,
@@ -67,4 +67,34 @@ test('honours the configured exam time zone', () => {
 
 test('formats the session date for schedule messages', () => {
   assert.equal(formatSessionDateLabel('2026-11-21'), 'Sabtu, 21 November 2026');
+});
+
+test('reports the resolved time zone used for the schedule', () => {
+  assert.equal(examSessionWindow(scheduledExam, { timeZone: 'Asia/Makassar' }).timeZone, 'Asia/Makassar');
+  assert.equal(examSessionWindow(scheduledExam, { timeZone: 'not/a-zone' }).timeZone, 'Asia/Jakarta');
+  assert.equal(examSessionWindow({}).timeZone, 'Asia/Jakarta');
+});
+
+test('attaches the server schedule and time zone to student exam rows', () => {
+  const rows = [
+    { sessionId: 11, title: 'PTS', sessionNumber: 1, sessionDate: '2026-11-21', sessionStart: '08:00', sessionEnd: '10:00' },
+    { sessionId: 12, title: 'PAS', sessionNumber: null, sessionDate: null, sessionStart: null, sessionEnd: null },
+  ];
+  // 00:30Z is 08:30 in Asia/Makassar (UTC+8) but 07:30 in Asia/Jakarta (UTC+7).
+  const now = new Date('2026-11-21T00:30:00Z');
+  const makassar = attachExamSessionSchedule(rows, { now, timeZone: 'Asia/Makassar' });
+  const jakarta = attachExamSessionSchedule(rows, { now, timeZone: 'Asia/Jakarta' });
+
+  assert.equal(makassar[0].sessionId, 11);
+  assert.equal(makassar[0].title, 'PTS');
+  assert.equal(makassar[0].schedule.timeZone, 'Asia/Makassar');
+  assert.equal(makassar[0].schedule.open, true);
+  assert.equal(jakarta[0].schedule.timeZone, 'Asia/Jakarta');
+  assert.equal(jakarta[0].schedule.open, false);
+  assert.equal(jakarta[0].schedule.state, 'before');
+
+  assert.equal(makassar[1].schedule.timeZone, 'Asia/Makassar');
+  assert.equal(makassar[1].schedule.open, false);
+  assert.equal(makassar[1].schedule.state, 'missing');
+  assert.deepEqual(attachExamSessionSchedule(null), []);
 });

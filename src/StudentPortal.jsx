@@ -58,7 +58,7 @@ export default function StudentPortal({user,onLogout}) {
     if(!selectedExam)return;
     const isNew=selectedExam.sessionStatus==='not_started';
     if(isNew){
-      const schedule=examSessionWindow(selectedExam,{now:new Date()});
+      const schedule=examSessionWindow(selectedExam,{now:new Date(),timeZone:selectedExam.schedule?.timeZone});
       if(!schedule.open){setError(portalScheduleNote(selectedExam,schedule));return;}
     }
     if(isNew&&!/^\d{4,6}$/.test(entryPin)){
@@ -120,7 +120,7 @@ export default function StudentPortal({user,onLogout}) {
       {error&&<div className="portal-error" role="alert"><AlertTriangle size={16}/>{error}<button onClick={loadExams}>Coba lagi</button></div>}
       <div className="portal-section-heading"><h2>Daftar ujian</h2><button onClick={loadExams} disabled={loading}><RefreshCw size={14}/> Perbarui</button></div>
       {loading?<div className="portal-empty"><RefreshCw size={22}/><b>Memuat ujian¦</b></div>:
-        exams.length?<div className="portal-exams">{exams.map(exam=>{const schedule=examSessionWindow(exam,{now:scheduleNow});return <article className="portal-exam" key={exam.sessionId}>
+        exams.length?<div className="portal-exams">{exams.map(exam=>{const schedule=examSessionWindow(exam,{now:scheduleNow,timeZone:exam.schedule?.timeZone});return <article className="portal-exam" key={exam.sessionId}>
           <i className="portal-exam-icon"><BookOpen size={19}/></i>
           <div className="portal-exam-info"><span className="portal-exam-state">{portalStatus(exam.sessionStatus,exam.examStatus)}</span>
             <h3>{exam.title}</h3><p>{exam.subject} Â· {exam.grade ? `Kelas ${exam.grade}  ` : ''}{exam.topic}  {exam.durationMinutes} menit</p>

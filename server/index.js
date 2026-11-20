@@ -39,7 +39,7 @@ import { validateSubjectInput } from './subjectValidation.js';
 import { calculateItemDifficulty } from './itemAnalysis.js';
 import { createTenantBackupService } from './tenantBackupService.js';
 import { normalizeIdempotencyKey } from './idempotency.js';
-import { examSessionWindow, resolveExamTimeZone } from './examSchedule.js';
+import { attachExamSessionSchedule, examSessionWindow, resolveExamTimeZone } from './examSchedule.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -2071,7 +2071,7 @@ app.get('/api/student/exams',allow('student'),asyncRoute(async(req,res)=>{const 
   FROM exam_sessions es JOIN exams e ON e.id=es.exam_id
   JOIN users u ON u.id=es.student_id
   JOIN question_banks b ON b.id=e.bank_id JOIN subjects s ON s.id=b.subject_id
-  WHERE es.student_id=$1 AND (e.status='active' OR (e.status='scheduled' AND e.session_date IS NOT NULL) OR es.status IN ('completed','locked')) ORDER BY e.created_at DESC`,[req.session.user.id]);res.json(q.rows);}));
+  WHERE es.student_id=$1 AND (e.status='active' OR (e.status='scheduled' AND e.session_date IS NOT NULL) OR es.status IN ('completed','locked')) ORDER BY e.created_at DESC`,[req.session.user.id]);res.json(attachExamSessionSchedule(q.rows,{timeZone:examTimezone}));}));
 app.post('/api/student/exams/:examId/start',allow('student'),startLimiter,asyncRoute(async(req,res)=>{
   const client=await pool.connect();let sessionId;
   try{

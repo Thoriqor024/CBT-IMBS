@@ -54,6 +54,7 @@ export function formatSessionDateLabel(date) {
  * session date, between its session start and end time, in the exam time zone.
  */
 export function examSessionWindow(exam, { now = new Date(), timeZone = DEFAULT_EXAM_TIME_ZONE } = {}) {
+  const zone = resolveExamTimeZone(timeZone);
   const sessionNumber = Number(exam?.sessionNumber);
   const sessionDate = normalizeDate(exam?.sessionDate);
   const sessionStart = normalizeTime(exam?.sessionStart);
@@ -63,6 +64,7 @@ export function examSessionWindow(exam, { now = new Date(), timeZone = DEFAULT_E
       configured: false,
       open: false,
       state: 'missing',
+      timeZone: zone,
       startsAt: null,
       endsAt: null,
       message: 'Tentukan sesi ujian (hari/tanggal dan jam mulai–berakhir) sebelum menjalankan ujian.',
@@ -70,7 +72,7 @@ export function examSessionWindow(exam, { now = new Date(), timeZone = DEFAULT_E
   }
 
   const scheduleLabel = `sesi ${sessionNumber} pada ${formatSessionDateLabel(sessionDate)} pukul ${sessionStart}–${sessionEnd}`;
-  const { date: localDate, time: localTime } = zonedParts(now, timeZone);
+  const { date: localDate, time: localTime } = zonedParts(now, zone);
   const open = localDate === sessionDate && localTime >= sessionStart && localTime < sessionEnd;
   const beforeSchedule = localDate < sessionDate || (localDate === sessionDate && localTime < sessionStart);
   const state = open ? 'open' : beforeSchedule ? 'before' : 'after';
@@ -86,6 +88,7 @@ export function examSessionWindow(exam, { now = new Date(), timeZone = DEFAULT_E
     configured: true,
     open,
     state,
+    timeZone: zone,
     startsAt: `${sessionDate}T${sessionStart}`,
     endsAt: `${sessionDate}T${sessionEnd}`,
     sessionNumber,
@@ -94,4 +97,13 @@ export function examSessionWindow(exam, { now = new Date(), timeZone = DEFAULT_E
     sessionEnd,
     message,
   };
+}
+
+/**
+ * Adds the server-evaluated schedule window (including the exam time zone) to API
+ * rows so the client never has to guess which zone the schedule uses.
+ */
+export function attachExamSessionSchedule(rows, { now = new Date(), timeZone = DEFAULT_EXAM_TIME_ZONE } = {}) {
+  const zone = resolveExamTimeZone(timeZone);
+  return (rows || []).map(row => ({ ...row, schedule: examSessionWindow(row, { now, timeZone: zone }) }));
 }
