@@ -240,6 +240,7 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
       ($1,$2,'in_progress',NOW()),
       ($3,$4,'in_progress',NOW())`,
     [assignedExamId, accountId('it-student-a'), unassignedExamId, accountId('it-student-b')]);
+    await pool.query("INSERT INTO exam_sessions(exam_id,student_id,status) VALUES($1,$2,'not_started')",[assignedExamId, accountId('it-student-b')]);
     await pool.query('INSERT INTO exam_proctors(exam_id,proctor_id) VALUES($1,$2)',[
       assignedExamId, accountId('it-pengawas-a'),
     ]);
@@ -308,9 +309,42 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
     assert.equal(unassignedMonitor.status, 200);
     assert.deepEqual(unassignedMonitor.data, []);
 
+    // Filter sesi di server: hanya baris sesi terpilih, termasuk peserta yang belum mulai.
+    const filteredMonitor = await request(baseUrl, `/monitor?examId=${assignedExamId}`, { cookie: adminCookie });
+    assert.equal(filteredMonitor.status, 200, JSON.stringify(filteredMonitor.data));
+    assert.ok(filteredMonitor.data.every(row => String(row.examId) === String(assignedExamId)), 'Filter sesi harus membatasi baris monitor.');
+    assert.deepEqual(filteredMonitor.data.map(row => `${row.name}:${row.status}`).sort(), ['Student A:in_progress', 'Student B:not_started'], 'Sesi terpilih harus memuat peserta yang belum mulai.');
+    const otherSessionMonitor = await request(baseUrl, `/monitor?examId=${unassignedExamId}`, { cookie: proctorCookie });
+    assert.equal(otherSessionMonitor.status, 200);
+    assert.deepEqual(otherSessionMonitor.data, [], 'Filter sesi tidak boleh membuka sesi di luar penugasan pengawas.');
+    const filteredResults = await request(baseUrl, `/results?examId=${assignedExamId}`, { cookie: adminCookie });
+    assert.equal(filteredResults.status, 200, JSON.stringify(filteredResults.data));
+    assert.ok(filteredResults.data.every(row => String(row.examId) === String(assignedExamId)), 'Filter sesi harus membatasi baris hasil ujian.');
+
+    // Penugasan pengawas langsung dari baris ujian, lengkap dengan audit perubahannya.
+    const assignment = await request(baseUrl, `/exams/${assignedExamId}/proctors`, {
+      method: 'PUT', cookie: adminCookie, body: { proctorIds: [accountId('it-pengawas-b')] },
+    });
+    assert.equal(assignment.status, 200, JSON.stringify(assignment.data));
+    assert.deepEqual(assignment.data.proctors.map(row => row.name), ['Pengawas B']);
+    const assignmentAudit = await pool.query("SELECT detail FROM audit_logs WHERE action='exam.proctors.set' ORDER BY id DESC LIMIT 1");
+    assert.deepEqual(assignmentAudit.rows[0].detail.added, ['Pengawas B'], 'Audit harus mencatat pengawas yang ditambahkan.');
+    assert.deepEqual(assignmentAudit.rows[0].detail.removed, ['Pengawas A'], 'Audit harus mencatat pengawas yang dilepas.');
+    const detachedExams = await request(baseUrl, '/exams', { cookie: proctorCookie });
+    assert.deepEqual(detachedExams.data, [], 'Pengawas yang dilepas tidak lagi melihat ujian.');
+    const invalidAssignment = await request(baseUrl, `/exams/${assignedExamId}/proctors`, {
+      method: 'PUT', cookie: adminCookie, body: { proctorIds: [accountId('it-teacher')] },
+    });
+    assert.equal(invalidAssignment.status, 400, 'Hanya akun pengawas yang boleh ditugaskan ke ujian.');
+    const restoredAssignment = await request(baseUrl, `/exams/${assignedExamId}/proctors`, {
+      method: 'PUT', cookie: adminCookie, body: { proctorIds: [accountId('it-pengawas-a')] },
+    });
+    assert.equal(restoredAssignment.status, 200);
+    assert.deepEqual(restoredAssignment.data.proctors.map(row => row.name), ['Pengawas A']);
+
     const assignedDetail = await request(baseUrl, `/exams/${assignedExamId}/monitor`, { cookie: proctorCookie });
     assert.equal(assignedDetail.status, 200);
-    assert.deepEqual(assignedDetail.data.students.map(row => row.name), ['Student A']);
+    assert.deepEqual(assignedDetail.data.students.map(row => row.name), ['Student A', 'Student B'], 'Detail ujian memuat semua peserta sesi ujian, termasuk yang belum mulai.');
     const unassignedDetail = await request(baseUrl, `/exams/${unassignedExamId}/monitor`, { cookie: proctorCookie });
     assert.equal(unassignedDetail.status, 404, 'Pengawas tidak boleh membuka monitor ujian yang tidak di-assign.');
 

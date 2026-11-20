@@ -15,6 +15,7 @@ const eventLabels = {
 
 export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onReviewSession, onViolation, onReset, canRecordViolation = false, isPengawas = false }) {
   const [sessions, setSessions] = useState([]);
+  const [catalog, setCatalog] = useState([]);
   const [expanded, setExpanded] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -25,13 +26,16 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
   const refresh = useCallback(async () => {
     setError('');
     try {
-      setSessions(await api('/monitor'));
+      const all = await api('/monitor');
+      setCatalog(all);
+      if (exam && exam !== 'all') setSessions(await api(`/monitor?examId=${encodeURIComponent(exam)}`));
+      else setSessions(all);
     } catch (err) {
       setError(err.message || 'Data pemantauan tidak dapat dimuat.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [exam]);
 
   useEffect(() => {
     refresh();
@@ -44,12 +48,12 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
     (student.events || []).some(event => event.code !== 'admin_reset' && ['pending', 'confirmed'].includes(event.reviewStatus));
   const sessionOptions = useMemo(() => {
     const options = new Map();
-    sessions.forEach(session => {
+    [...catalog, ...sessions].forEach(session => {
       const id = String(session.examId);
       if (!options.has(id)) options.set(id, { id, label: monitorSessionLabel(session) });
     });
     return [...options.values()].sort((left, right) => left.label.localeCompare(right.label, 'id-ID'));
-  }, [sessions]);
+  }, [catalog, sessions]);
   useEffect(() => {
     if (!isPengawas) return;
     const ids = sessionOptions.map(option => option.id);
@@ -64,9 +68,24 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
   const violations = useMemo(() => scopedSessions.filter(isViolation), [scopedSessions]);
   const completed = useMemo(() => scopedSessions.filter(student => student.status === 'completed' && !isViolation(student)), [scopedSessions]);
   const active = useMemo(() => scopedSessions.filter(student => student.status === 'in_progress' && !isViolation(student)), [scopedSessions]);
+  const notStarted = useMemo(() => scopedSessions.filter(student => student.status === 'not_started' && !isViolation(student)), [scopedSessions]);
+  const roomSummaries = useMemo(() => {
+    const summary = new Map();
+    scopedSessions.forEach(student => {
+      const name = student.roomName || 'Tanpa ruang';
+      const entry = summary.get(name) || { name, total: 0, notStarted: 0, active: 0, completed: 0, violations: 0 };
+      entry.total += 1;
+      if (student.status === 'not_started') entry.notStarted += 1;
+      else if (student.status === 'in_progress') entry.active += 1;
+      else if (student.status === 'completed') entry.completed += 1;
+      if (isViolation(student)) entry.violations += 1;
+      summary.set(name, entry);
+    });
+    return [...summary.values()].sort((left, right) => left.name.localeCompare(right.name, 'id-ID'));
+  }, [scopedSessions]);
 
   const toggle = id => setExpanded(current => ({ ...current, [id]: !current[id] }));
-  const showAll = () => setExpanded(Object.fromEntries([...active, ...violations, ...completed].map(s => [s.id, true])));
+  const showAll = () => setExpanded(Object.fromEntries([...active, ...violations, ...completed, ...notStarted].map(s => [s.id, true])));
 
   return <>
     <div className="page-title-row">
@@ -74,6 +93,12 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
       <div className="button-row">{sessionOptions.length > 0 && <label className="monitor-room-filter monitor-session-filter"><ClipboardList size={14}/><select value={isPengawas ? (exam || sessionOptions[0]?.id || '') : exam} onChange={event => setExam(event.target.value)} aria-label="Filter sesi ujian">{!isPengawas && <option value="all">Semua sesi</option>}{sessionOptions.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>}{rooms.length > 0 && <label className="monitor-room-filter"><DoorOpen size={14}/><select value={room} onChange={event => setRoom(event.target.value)} aria-label="Filter ruang ujian"><option value="all">Semua ruang</option>{rooms.map(name => <option key={name} value={name}>{name}</option>)}</select></label>}<button className="secondary" onClick={refresh}><RefreshCw size={15}/> Perbarui</button><button className="secondary" onClick={showAll}><Clock3 size={15}/> Tampilkan log</button></div>
     </div>
     {error && <div className="monitor-dashboard-error" role="alert"><CircleAlert size={15}/>{error}</div>}
+    {roomSummaries.length > 0 && <div className="monitor-room-summary" aria-label="Ringkasan per ruang ujian">
+      {roomSummaries.map(item => <article key={item.name} className="monitor-room-card">
+        <header><DoorOpen size={13}/><b>{item.name}</b><span>{item.total} siswa</span></header>
+        <div><span className="not-started">Belum mulai {item.notStarted}</span><span className="active">Mengerjakan {item.active}</span><span className="done">Selesai {item.completed}</span><span className="flagged">Pelanggaran {item.violations}</span></div>
+      </article>)}
+    </div>}
     <div className="admin-monitor-grid">
       <MonitorPanel title="Siswa dengan pelanggaran" students={violations} count={violations.length} note="Tinjau bukti sebelum menetapkan keputusan." empty="Belum ada siswa yang terindikasi melanggar." loading={loading}>
         {filtered => <MonitorTable students={filtered} expanded={expanded} toggle={toggle} now={now} busy={busy} onReviewEvent={onReviewEvent} onReviewSession={onReviewSession} onViolation={onViolation} onReset={onReset} canRecordViolation={canRecordViolation} showReviewActions />}
@@ -84,6 +109,9 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
       <MonitorPanel title="Selesai ujian" students={completed} count={completed.length} note="Riwayat peserta yang telah mengumpulkan ujian." empty="Belum ada siswa yang menyelesaikan ujian." loading={loading}>
         {filtered => <MonitorTable students={filtered} expanded={expanded} toggle={toggle} now={now} busy={busy} onReviewEvent={onReviewEvent} onReviewSession={onReviewSession} onViolation={onViolation} onReset={onReset} canRecordViolation={canRecordViolation} />}
       </MonitorPanel>
+      {(loading || notStarted.length > 0) && <MonitorPanel title="Belum mulai" students={notStarted} count={notStarted.length} note="Peserta yang belum memasukkan PIN atau memulai ujian pada sesi ini." empty="Semua peserta sudah memulai ujian." loading={loading}>
+        {filtered => <MonitorTable students={filtered} expanded={expanded} toggle={toggle} now={now} busy={busy} onReviewEvent={onReviewEvent} onReviewSession={onReviewSession} onViolation={onViolation} onReset={onReset} canRecordViolation={canRecordViolation} />}
+      </MonitorPanel>}
     </div>
   </>;
 }

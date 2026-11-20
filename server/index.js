@@ -1362,6 +1362,7 @@ app.put('/api/teachers/:id/access',allow('admin'),asyncRoute(async(req,res)=>{
     await client.query('UPDATE users SET role=$2 WHERE id=$1',[req.params.id,role]);
     const previous=await teacherAssignments(req.params.id,client);
     const previousExams=await proctorAssignedExams(req.params.id,client);
+    const previousRooms=await proctorAssignedRooms(req.params.id,client);
     await client.query('DELETE FROM teacher_access WHERE teacher_id=$1',[req.params.id]);
     await client.query('DELETE FROM exam_proctors WHERE proctor_id=$1',[req.params.id]);
     await client.query('DELETE FROM exam_room_proctors WHERE proctor_id=$1',[req.params.id]);
@@ -1377,7 +1378,12 @@ app.put('/api/teachers/:id/access',allow('admin'),asyncRoute(async(req,res)=>{
     }else{
       await client.query('DELETE FROM question_bank_teachers WHERE teacher_id=$1',[req.params.id]);
     }
-    await audit(client,req.session.user.id,'staff.update',{staffId:Number(req.params.id),previousRole:teacher.rows[0].role,role,previous,previousExams,next:{classNames,subjectIds,examIds,roomIds,bankIds}});
+    const nextExamNames=examIds.length?(await client.query('SELECT title FROM exams WHERE id=ANY($1::bigint[]) ORDER BY title',[examIds])).rows.map(row=>row.title):[];
+    const nextRoomNames=roomIds.length?(await client.query('SELECT name FROM exam_rooms WHERE id=ANY($1::bigint[]) ORDER BY name',[roomIds])).rows.map(row=>row.name):[];
+    const examNameById=new Map(examIds.length?(await client.query('SELECT id,title FROM exams WHERE id=ANY($1::bigint[])',[examIds])).rows.map(row=>[Number(row.id),row.title]):[]);
+    const roomNameById=new Map(roomIds.length?(await client.query('SELECT id,name FROM exam_rooms WHERE id=ANY($1::bigint[])',[roomIds])).rows.map(row=>[Number(row.id),row.name]):[]);
+    await audit(client,req.session.user.id,'staff.update',{staffId:Number(req.params.id),previousRole:teacher.rows[0].role,role,previous,previousExams,previousRooms,next:{classNames,subjectIds,examIds,roomIds,bankIds,examNames:nextExamNames,roomNames:nextRoomNames}});
+    if(role==='pengawas'||previousExams.length||previousRooms.length)await audit(client,req.session.user.id,'staff.assignment',{staffId:Number(req.params.id),previousExams:previousExams.map(exam=>({id:exam.id,title:exam.title})),previousRooms:previousRooms.map(room=>({id:room.id,name:room.name})),exams:examIds.map(id=>({id,title:examNameById.get(id)??null})),rooms:roomIds.map(id=>({id,name:roomNameById.get(id)??null}))});
     await client.query('COMMIT');
     res.json({id:Number(req.params.id),role,classes:classNames,subjectIds,exams:role==='pengawas'?await proctorAssignedExams(req.params.id):[],rooms:role==='pengawas'?await proctorAssignedRooms(req.params.id):[],banks:role==='teacher'?await teacherAssignedBanks(req.params.id):[]});
   }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
@@ -1802,7 +1808,7 @@ app.post('/api/rooms',allow('admin'),asyncRoute(examRoomApi.createRoom));
 app.put('/api/rooms/:id',allow('admin'),asyncRoute(examRoomApi.updateRoom));
 app.delete('/api/rooms/:id',allow('admin'),asyncRoute(examRoomApi.deleteRoom));
 app.post('/api/exams',allow('admin','teacher'),asyncRoute(async(req,res)=>{if(Array.isArray(req.body?.roomIds))return examRoomApi.createRoomBasedExam(req,res);if(req.session.user.role==='teacher')return res.status(403).json({error:'Rancangan ujian guru harus dibuat dari bank soal dan ruang ujian.'});const {title,bankId,className,bankIds,classNames,mcCount,essayCount,durationMinutes}=req.body||{};const effectiveBankIds=Array.isArray(bankIds)&&bankIds.length?bankIds.map(Number):bankId?[Number(bankId)]:[];const effectiveClassNames=Array.isArray(classNames)&&classNames.length?classNames.map(String).map(s=>s.trim()).filter(Boolean):className?String(className).split(',').map(s=>s.trim()).filter(Boolean):[];const mc=Number(mcCount),essay=Number(essayCount),duration=Number(durationMinutes);if(!String(title||'').trim()||!effectiveBankIds.length||!effectiveClassNames.length||!Number.isInteger(mc)||!Number.isInteger(essay)||mc<0||essay<0||mc+essay<1||!Number.isInteger(duration)||duration<1)return res.status(400).json({error:'Lengkapi judul, bank soal, kelas peserta, jumlah soal, dan durasi.'});const client=await pool.connect();try{await client.query('BEGIN');const bankLock=await client.query('SELECT id,subject_id,grade,topic FROM question_banks WHERE id = ANY($1) FOR UPDATE',[effectiveBankIds]);if(bankLock.rows.length!==effectiveBankIds.length)throw Object.assign(new Error('Salah satu bank soal tidak ditemukan.'),{status:404});const bankGrades=[...new Set(bankLock.rows.map(b=>b.grade))];const escapeReg=(s)=>s.split('').map(c=>'[-/\\^$*+?.()|[]{}'.includes(c)?('\\'+c):c).join('');const matchGrade=(cls)=>{const sorted=[...bankGrades].sort((a,b)=>b.length-a.length);const norm=String(cls).trim();const stripped=norm.replace(/^(kelas|kls|class)\s*[-:]?\s*/i,'');const prefixMatch=sorted.find(g=>stripped===g||stripped.startsWith(g+' ')||stripped.startsWith(g+'-'));if(prefixMatch)return prefixMatch;return sorted.find(g=>new RegExp('(^|[^a-zA-Z0-9])'+escapeReg(g)+'([^a-zA-Z0-9]|$)','i').test(norm))||null;};for(const c of effectiveClassNames){const g=matchGrade(c);if(!g)throw Object.assign(new Error(`Kelas "${c}" tidak memiliki bank soal dengan tingkatan yang sesuai pada bank yang dipilih.`),{status:400});}for(const g of bankGrades){const gBankIds=bankLock.rows.filter(b=>b.grade===g).map(b=>b.id);const stock=await client.query("SELECT type,count(*)::int AS n FROM questions WHERE bank_id = ANY($1) GROUP BY type",[gBankIds]);const counts=Object.fromEntries(stock.rows.map(x=>[x.type,x.n]));const totalAvailableMC=(counts.mc||0)+(counts.complex_mc||0);if(mc>totalAvailableMC||essay>(counts.essay||0)){throw Object.assign(new Error(`Stok soal tingkat ${g} tidak cukup. Tersedia ${totalAvailableMC} pilihan ganda dan ${counts.essay||0} essay.`),{status:400});}}const primaryBankId=bankLock.rows[0].id;const displayClassName=effectiveClassNames.join(', ');const exam=await client.query("INSERT INTO exams(title,bank_id,class_name,mc_count,essay_count,duration_minutes,created_by) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id",[String(title).trim(),primaryBankId,displayClassName,mc,essay,duration,req.session.user.id]);const students=await client.query("SELECT id,class_name FROM users WHERE role='student' AND class_name = ANY($1) AND active=TRUE ORDER BY id",[effectiveClassNames]);for(const student of students.rows){const studentGrade=matchGrade(student.class_name);const targetBankIds=bankLock.rows.filter(b=>b.grade===studentGrade).map(b=>b.id);const sessionRow=await client.query('INSERT INTO exam_sessions(exam_id,student_id) VALUES($1,$2) RETURNING id',[exam.rows[0].id,student.id]);const picks=await pickExamQuestions(client,targetBankIds,mc,essay);for(let i=0;i<picks.length;i++)await client.query('INSERT INTO exam_questions(session_id,question_id,position) VALUES($1,$2,$3)',[sessionRow.rows[0].id,picks[i].id,i+1]);}await client.query('COMMIT');await audit(pool,req.session.user.id,'exam.create',{examId:exam.rows[0].id,participants:students.rowCount,banks:effectiveBankIds.length,classes:effectiveClassNames.length});res.status(201).json({id:exam.rows[0].id,participants:students.rowCount});}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}}));
-app.get('/api/exams',allow('admin','teacher','pengawas'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT e.id,e.title,e.class_name AS "className",e.duration_minutes AS "durationMinutes",e.status,e.created_at AS "createdAt",e.session_number AS "sessionNumber",to_char(e.session_date,'YYYY-MM-DD') AS "sessionDate",to_char(e.session_start,'HH24:MI') AS "sessionStart",to_char(e.session_end,'HH24:MI') AS "sessionEnd",s.name AS subject,b.grade,b.topic,e.mc_count AS "mcCount",e.essay_count AS "essayCount",(SELECT COALESCE(jsonb_agg(jsonb_build_object('id',room.id,'name',room.name) ORDER BY room.name),'[]'::jsonb) FROM exam_room_links erl JOIN exam_rooms room ON room.id=erl.room_id WHERE erl.exam_id=e.id) AS rooms,(SELECT COALESCE(jsonb_agg(jsonb_build_object('id',exsub.id,'name',exsub.name) ORDER BY exsub.position),'[]'::jsonb) FROM (SELECT s2.id,s2.name,es2.position FROM exam_subjects es2 JOIN subjects s2 ON s2.id=es2.subject_id WHERE es2.exam_id=e.id) exsub) AS subjects,count(es.id)::int AS participants,count(es.id) FILTER(WHERE es.status='in_progress')::int AS in_progress,count(es.id) FILTER(WHERE es.status='completed')::int AS completed,count(es.id) FILTER(WHERE es.status='locked')::int AS locked,count(es.id) FILTER(WHERE es.violation_count>0)::int AS violations FROM exams e JOIN question_banks b ON b.id=e.bank_id JOIN subjects s ON s.id=b.subject_id LEFT JOIN exam_sessions es ON es.exam_id=e.id AND ($1<>'pengawas' OR (es.room_id IS NULL AND EXISTS(SELECT 1 FROM exam_proctors epc WHERE epc.exam_id=e.id AND epc.proctor_id=$2)) OR (es.room_id IS NOT NULL AND EXISTS(SELECT 1 FROM exam_room_proctors erpc WHERE erpc.proctor_id=$2 AND erpc.room_id=es.room_id))) WHERE ($1='admin' OR ($1='pengawas' AND (EXISTS(SELECT 1 FROM exam_proctors ep WHERE ep.exam_id=e.id AND ep.proctor_id=$2) OR EXISTS(SELECT 1 FROM exam_room_links erl JOIN exam_room_proctors erp ON erp.room_id=erl.room_id WHERE erl.exam_id=e.id AND erp.proctor_id=$2))) OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*'))))) GROUP BY e.id,s.name,b.grade,b.topic ORDER BY e.created_at DESC`,[req.session.user.role,req.session.user.id]);res.json(q.rows);}));
+app.get('/api/exams',allow('admin','teacher','pengawas'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT e.id,e.title,e.class_name AS "className",e.duration_minutes AS "durationMinutes",e.status,e.created_at AS "createdAt",e.session_number AS "sessionNumber",to_char(e.session_date,'YYYY-MM-DD') AS "sessionDate",to_char(e.session_start,'HH24:MI') AS "sessionStart",to_char(e.session_end,'HH24:MI') AS "sessionEnd",s.name AS subject,b.grade,b.topic,e.mc_count AS "mcCount",e.essay_count AS "essayCount",(SELECT COALESCE(jsonb_agg(ep.proctor_id ORDER BY ep.proctor_id),'[]'::jsonb) FROM exam_proctors ep WHERE ep.exam_id=e.id) AS "proctorIds",(SELECT COALESCE(jsonb_agg(jsonb_build_object('id',room.id,'name',room.name) ORDER BY room.name),'[]'::jsonb) FROM exam_room_links erl JOIN exam_rooms room ON room.id=erl.room_id WHERE erl.exam_id=e.id) AS rooms,(SELECT COALESCE(jsonb_agg(jsonb_build_object('id',exsub.id,'name',exsub.name) ORDER BY exsub.position),'[]'::jsonb) FROM (SELECT s2.id,s2.name,es2.position FROM exam_subjects es2 JOIN subjects s2 ON s2.id=es2.subject_id WHERE es2.exam_id=e.id) exsub) AS subjects,count(es.id)::int AS participants,count(es.id) FILTER(WHERE es.status='in_progress')::int AS in_progress,count(es.id) FILTER(WHERE es.status='completed')::int AS completed,count(es.id) FILTER(WHERE es.status='locked')::int AS locked,count(es.id) FILTER(WHERE es.violation_count>0)::int AS violations FROM exams e JOIN question_banks b ON b.id=e.bank_id JOIN subjects s ON s.id=b.subject_id LEFT JOIN exam_sessions es ON es.exam_id=e.id AND ($1<>'pengawas' OR (es.room_id IS NULL AND EXISTS(SELECT 1 FROM exam_proctors epc WHERE epc.exam_id=e.id AND epc.proctor_id=$2)) OR (es.room_id IS NOT NULL AND EXISTS(SELECT 1 FROM exam_room_proctors erpc WHERE erpc.proctor_id=$2 AND erpc.room_id=es.room_id))) WHERE ($1='admin' OR ($1='pengawas' AND (EXISTS(SELECT 1 FROM exam_proctors ep WHERE ep.exam_id=e.id AND ep.proctor_id=$2) OR EXISTS(SELECT 1 FROM exam_room_links erl JOIN exam_room_proctors erp ON erp.room_id=erl.room_id WHERE erl.exam_id=e.id AND erp.proctor_id=$2))) OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*'))))) GROUP BY e.id,s.name,b.grade,b.topic ORDER BY e.created_at DESC`,[req.session.user.role,req.session.user.id]);res.json(q.rows);}));
 app.delete('/api/exams/:id',allow('admin'),asyncRoute(async(req,res)=>{
   const client=await pool.connect();
   try{
@@ -1821,6 +1827,30 @@ app.delete('/api/exams/:id',allow('admin'),asyncRoute(async(req,res)=>{
     await client.query('COMMIT');
     res.json({ok:true,deleted:{sessions:deleted.sessions,responses:deleted.responses,violations:deleted.violations}});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+}));
+app.put('/api/exams/:id/proctors',allow('admin'),asyncRoute(async(req,res)=>{
+  const rawIds=req.body?.proctorIds;
+  if(!Array.isArray(rawIds))return res.status(400).json({error:'Daftar pengawas wajib berupa array.'});
+  const proctorIds=[...new Set(rawIds.map(Number))];
+  if(proctorIds.some(id=>!Number.isSafeInteger(id)||id<1))return res.status(400).json({error:'ID pengawas tidak valid.'});
+  const client=await pool.connect();
+  try{
+    await client.query('BEGIN');
+    const exam=await client.query('SELECT id,title FROM exams WHERE id=$1 FOR UPDATE',[req.params.id]);
+    if(!exam.rowCount)throw Object.assign(new Error('Ujian tidak ditemukan.'),{status:404});
+    const valid=proctorIds.length?await client.query("SELECT id,full_name AS name FROM users WHERE id=ANY($1::bigint[]) AND role='pengawas' AND active",[proctorIds]):{rowCount:0,rows:[]};
+    if(valid.rowCount!==proctorIds.length)throw Object.assign(new Error('Salah satu pengawas tidak ditemukan.'),{status:400});
+    const before=await client.query('SELECT u.id,u.full_name AS name FROM exam_proctors ep JOIN users u ON u.id=ep.proctor_id WHERE ep.exam_id=$1 ORDER BY u.full_name',[req.params.id]);
+    const beforeIds=before.rows.map(row=>Number(row.id));
+    const removed=before.rows.filter(row=>!proctorIds.includes(Number(row.id))).map(row=>row.name);
+    const added=valid.rows.filter(row=>!beforeIds.includes(Number(row.id))).map(row=>row.name);
+    await client.query('DELETE FROM exam_proctors WHERE exam_id=$1',[req.params.id]);
+    for(const proctorId of proctorIds)await client.query('INSERT INTO exam_proctors(exam_id,proctor_id) VALUES($1,$2)',[req.params.id,proctorId]);
+    if(added.length||removed.length)await audit(client,req.session.user.id,'exam.proctors.set',{examId:Number(req.params.id),examTitle:exam.rows[0].title,added,removed,proctorIds});
+    const after=await client.query('SELECT u.id,u.full_name AS name FROM exam_proctors ep JOIN users u ON u.id=ep.proctor_id WHERE ep.exam_id=$1 ORDER BY u.full_name',[req.params.id]);
+    await client.query('COMMIT');
+    res.json({examId:Number(req.params.id),proctors:after.rows});
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
 }));
 app.patch('/api/exams/:id/status',allow('admin','pengawas'),requireExamScope,asyncRoute(async(req,res)=>{
   const status=String(req.body.status);
@@ -2059,6 +2089,7 @@ app.get('/api/exams/:id/student-grades',allow('admin','teacher'),requireExamScop
   res.json({ exam, students: q.rows });
 }));
 app.get('/api/monitor',allow('admin','teacher','pengawas'),asyncRoute(async(req,res)=>{
+  const examIdParam=Number(req.query.examId);const examFilter=Number.isSafeInteger(examIdParam)&&examIdParam>0?examIdParam:null;
   const q=await pool.query(`SELECT e.id AS "examId",e.title AS "examTitle",e.status AS "examStatus",e.session_number AS "sessionNumber",to_char(e.session_date,'YYYY-MM-DD') AS "sessionDate",to_char(e.session_start,'HH24:MI') AS "sessionStart",to_char(e.session_end,'HH24:MI') AS "sessionEnd",es.id,es.student_id AS "studentId",es.status,
       es.violation_count AS "violationCount",es.final_score AS score,es.last_ping_at AS "lastPingAt",u.full_name AS name,u.username,u.class_name AS "className",mon_room.name AS "roomName",
       count(ve.id) FILTER(WHERE ve.review_status='pending')::int AS "pendingViolationCount",
@@ -2067,10 +2098,11 @@ app.get('/api/monitor',allow('admin','teacher','pengawas'),asyncRoute(async(req,
     FROM exams e JOIN question_banks b ON b.id=e.bank_id JOIN exam_sessions es ON es.exam_id=e.id JOIN users u ON u.id=es.student_id
     LEFT JOIN exam_rooms mon_room ON mon_room.id=es.room_id
     LEFT JOIN violation_events ve ON ve.session_id=es.id
-    WHERE (es.status IN ('in_progress','completed','locked') OR es.violation_count>0 OR EXISTS(
+    WHERE (($3::bigint IS NOT NULL AND es.status IN ('not_started','in_progress','completed','locked')) OR es.status IN ('in_progress','completed','locked') OR es.violation_count>0 OR EXISTS(
       SELECT 1 FROM violation_events pending WHERE pending.session_id=es.id AND pending.review_status IN ('pending','confirmed') AND pending.code<>'admin_reset'
     )) AND ($1='admin' OR ($1='pengawas' AND ((es.room_id IS NULL AND EXISTS(SELECT 1 FROM exam_proctors ep WHERE ep.exam_id=e.id AND ep.proctor_id=$2)) OR (es.room_id IS NOT NULL AND EXISTS(SELECT 1 FROM exam_room_proctors erp WHERE erp.proctor_id=$2 AND erp.room_id=es.room_id)))) OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*')))))
-    GROUP BY e.id,es.id,u.id,mon_room.name ORDER BY e.created_at DESC,u.full_name`,[req.session.user.role,req.session.user.id]);
+    AND ($3::bigint IS NULL OR e.id=$3)
+    GROUP BY e.id,es.id,u.id,mon_room.name ORDER BY e.created_at DESC,u.full_name`,[req.session.user.role,req.session.user.id,examFilter]);
   res.json(q.rows);
 }));
 app.get('/api/student/exams',allow('student'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT es.id AS "sessionId",e.id AS "examId",e.title,e.duration_minutes AS "durationMinutes",e.status AS "examStatus",e.session_number AS "sessionNumber",to_char(e.session_date,'YYYY-MM-DD') AS "sessionDate",to_char(e.session_start,'HH24:MI') AS "sessionStart",to_char(e.session_end,'HH24:MI') AS "sessionEnd",es.status AS "sessionStatus",es.violation_count AS "violationCount",es.final_score AS score,es.last_ping_at AS "lastPingAt",(e.entry_pin_hash IS NOT NULL AND e.entry_pin_expires_at>clock_timestamp()) AS "pinReady",s.name AS subject,b.topic,s.language_code AS "languageCode",s.text_direction AS "textDirection",
@@ -2373,6 +2405,7 @@ app.put('/api/results/:examId/:studentId/final-score',allow('admin','teacher'),r
   finally{client.release();}
 }));
 app.get('/api/results',allow('admin','teacher'),asyncRoute(async(req,res)=>{
+  const examIdParam=Number(req.query.examId);const examFilter=Number.isSafeInteger(examIdParam)&&examIdParam>0?examIdParam:null;
   const q=await pool.query(`SELECT e.id AS "examId",es.student_id AS "studentId",e.title,e.class_name AS "className",e.session_number AS "sessionNumber",to_char(e.session_date,'YYYY-MM-DD') AS "sessionDate",to_char(e.session_start,'HH24:MI') AS "sessionStart",to_char(e.session_end,'HH24:MI') AS "sessionEnd",
       u.class_name AS "studentClassName",u.full_name AS "studentName",u.username,es.status,es.final_score AS "finalScore",es.finished_at AS "finishedAt",
       es.violation_count AS "violationCount",
@@ -2406,7 +2439,7 @@ app.get('/api/results',allow('admin','teacher'),asyncRoute(async(req,res)=>{
     ) violation_audit ON TRUE
     WHERE es.status IN ('completed','locked') AND ($1='admin' OR EXISTS(
       SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*')))
-    )) ORDER BY e.created_at DESC,u.full_name`,[req.session.user.role,req.session.user.id]);
+    )) AND ($3::bigint IS NULL OR e.id=$3) ORDER BY e.created_at DESC,u.full_name`,[req.session.user.role,req.session.user.id,examFilter]);
   res.json(q.rows);
 }));
 app.get('/api/dashboard',allow('admin','teacher'),asyncRoute(async(req,res)=>{

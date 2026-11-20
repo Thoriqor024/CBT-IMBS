@@ -45,6 +45,7 @@ export default function App(){
   const [profileFormError,setProfileFormError]=useState('');
   const [teacherList,setTeacherList]=useState([]),[teacherToEdit,setTeacherToEdit]=useState(null),[subjectToEdit,setSubjectToEdit]=useState(null),[selectedAnalysisBankId,setSelectedAnalysisBankId]=useState(''),[analysisData,setAnalysisData]=useState(null),[analysisLoading,setAnalysisLoading]=useState(false);
   const [rooms,setRooms]=useState([]),[roomUnassigned,setRoomUnassigned]=useState([]);
+  const [proctorExam,setProctorExam]=useState(null),[proctorSelection,setProctorSelection]=useState([]),[proctorError,setProctorError]=useState('');
   const isAdmin=user?.role==='admin';
   const isPengawas=user?.role==='pengawas';
   const isPlatformOwner=user?.role==='platform_owner';
@@ -97,6 +98,8 @@ export default function App(){
   const deleteSubject=async subject=>{if(!window.confirm(`Hapus mata pelajaran "${subject.name}"? Tindakan ini tidak dapat dibatalkan.`))return;const result=await run(()=>api('/subjects/'+subject.id,{method:'DELETE'}));if(result){await loadAll();notify('Mata pelajaran berhasil dihapus.');}};
   const createTeacher=async teacher=>{setTeacherFormError('');setBusy(true);try{const result=await api('/teachers',{method:'POST',body:JSON.stringify(teacher)});setTeacherList(current=>[result,...current]);setModal('');notify('Akun staf dibuat. Username akses: '+result.username);}catch(err){setTeacherFormError(err.message||'Akun staf tidak dapat dibuat.');}finally{setBusy(false);}};
   const updateTeacherAccess=async changes=>{setTeacherFormError('');setBusy(true);try{const result=await api('/teachers/'+changes.id+'/access',{method:'PUT',body:JSON.stringify(changes)});setTeacherList(current=>current.map(teacher=>String(teacher.id)===String(result.id)?{...teacher,...result}:teacher));setTeacherToEdit(null);setModal('');notify('Akses staf diperbarui.');}catch(err){setTeacherFormError(err.message||'Akses staf tidak dapat diperbarui.');}finally{setBusy(false);}};
+  const openExamProctors=exam=>{setProctorExam(exam);setProctorSelection((exam.proctorIds||[]).map(String));setProctorError('');setModal('proctors');};
+  const saveExamProctors=async()=>{if(!proctorExam)return;setProctorError('');setBusy(true);try{const result=await api(`/exams/${proctorExam.id}/proctors`,{method:'PUT',body:JSON.stringify({proctorIds:proctorSelection.map(Number)})});setExams(current=>current.map(exam=>String(exam.id)===String(proctorExam.id)?{...exam,proctorIds:result.proctors.map(item=>item.id)}:exam));setTeacherList(await api('/teachers'));setModal('');setProctorExam(null);notify(result.proctors.length?`Pengawas ujian: ${result.proctors.map(item=>item.name).join(', ')}.`:'Penugasan pengawas ujian dikosongkan.');}catch(err){setProctorError(err.message||'Penugasan pengawas tidak dapat disimpan.');}finally{setBusy(false);}};
   const createRoom=async room=>{const result=await api('/rooms',{method:'POST',body:JSON.stringify(room)});await loadAll();notify(`Ruang ${result.name}: ${result.totalAllocated} siswa terplotting.`);return result;};
   const updateRoom=async room=>{const result=await api('/rooms/'+room.id,{method:'PUT',body:JSON.stringify(room)});await loadAll();notify(`Ruang ${result.name} diperbarui: ${result.totalAllocated} siswa terplotting.`);return result;};
   const deleteRoom=async room=>{if(!window.confirm(`Hapus ${room.name}? Siswa pada ruang ini akan menjadi belum terplotting.`))return;try{await api('/rooms/'+room.id,{method:'DELETE'});await loadAll();notify('Ruang ujian dihapus.');}catch(err){notify(err.message);}};
@@ -403,6 +406,7 @@ export default function App(){
               onStatus={setExamStatus}
               canRunExam={isAdmin || isPengawas}
               onMonitor={openMonitor}
+              onAssignProctors={openExamProctors}
               onDelete={deleteExam}
               canSchedule={isAdmin || user?.role === "teacher"}
               canCreateExam={isAdmin || user?.role === "teacher"}
@@ -483,7 +487,7 @@ export default function App(){
       </main>
       {modal && (
         <Modal
-          title={modal === "profile" ? "Edit profil akun" : modal === "student" ? (studentToEdit ? "Edit siswa" : "Tambah siswa") : modal === "teacher-add" ? "Tambah staf" : modal === "teacher-import" ? "Import guru" : modal === "teacher-access" ? "Atur akses staf" : modal === "subject" ? (subjectToEdit ? "Edit mata pelajaran" : "Tambah mata pelajaran") : modalTitle(modal, selectedBank, selectedExam)}
+          title={modal === "profile" ? "Edit profil akun" : modal === "student" ? (studentToEdit ? "Edit siswa" : "Tambah siswa") : modal === "teacher-add" ? "Tambah staf" : modal === "teacher-import" ? "Import guru" : modal === "teacher-access" ? "Atur akses staf" : modal === "proctors" ? "Penugasan pengawas" : modal === "subject" ? (subjectToEdit ? "Edit mata pelajaran" : "Tambah mata pelajaran") : modalTitle(modal, selectedBank, selectedExam)}
           className={modal === "bank" ? "question-bank-modal" : modal === "exam" ? "exam-create-modal" : (modal === "teacher-add" || modal === "teacher-access") ? "teacher-modal" : modal === "session" ? "session-modal" : ""}
           onClose={() => {
             setModal("");
@@ -1140,6 +1144,36 @@ export default function App(){
               />
             </>
           )}
+          {modal === "proctors" && proctorExam && (
+            <>
+              <p className="staff-form-hint">Pilih pengawas yang bertugas pada <b>{proctorExam.title}</b>. Cakupan ruang masing-masing pengawas diatur pada menu Staf.</p>
+              {teacherList.filter((staff) => staff.role === "pengawas").length ? (
+                <div className="staff-choice-grid">
+                  {teacherList.filter((staff) => staff.role === "pengawas").map((staff) => {
+                    const value = String(staff.id);
+                    const selected = proctorSelection.includes(value);
+                    return (
+                      <label key={staff.id} className={`staff-choice${selected ? " selected" : ""}`}>
+                        <input type="checkbox" checked={selected} onChange={() => setProctorSelection((current) => current.includes(value) ? current.filter((id) => id !== value) : [...current, value])} />
+                        <span className="staff-choice-check">{selected ? <Check size={12} /> : <Plus size={12} />}</span>
+                        <span className="staff-choice-body">
+                          <b>{staff.name}</b>
+                          <small>{staff.username}{staff.rooms?.length ? ` · ${staff.rooms.map((room) => room.name).join(", ")}` : " · belum ada ruang"}</small>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="staff-empty">Belum ada akun pengawas. Tambahkan staf dengan role pengawas terlebih dahulu.</div>
+              )}
+              {proctorError && <div className="question-form-error" role="alert">{proctorError}</div>}
+              <div className="modal-actions">
+                <button className="secondary" onClick={() => setModal("")}>Batal</button>
+                <button className="primary" disabled={busy} onClick={saveExamProctors}>{busy ? "Menyimpan…" : "Simpan penugasan"}</button>
+              </div>
+            </>
+          )}
           {modal === "essay-review" && (
             <EssayReview
               result={selectedResult}
@@ -1735,23 +1769,33 @@ function BanksPage({
     </>
   );
 }
-function ExamsPage({exams,isAdmin,canCreateExam=false,canRunExam=false,canSchedule=false,busy,onCreate,onStatus,onMonitor,onDelete,onSchedule}) {
+function ExamsPage({exams,isAdmin,canCreateExam=false,canRunExam=false,canSchedule=false,busy,onCreate,onStatus,onMonitor,onDelete,onSchedule,onAssignProctors}) {
   const [scheduleNow,setScheduleNow]=useState(()=>new Date());
   useEffect(()=>{const timer=setInterval(()=>setScheduleNow(new Date()),30000);return()=>clearInterval(timer);},[]);
-  return <><PageTitle eyebrow="PENJADWALAN & DISTRIBUSI" title="Ujian" desc="Susun sesi dari bank spesifik; server menyimpan pembagian soal per peserta." actions={<>{canSchedule&&<button className="secondary" onClick={()=>onSchedule(null)}><CalendarDays size={16}/> Atur sesi</button>}{canCreateExam?<button className="primary" onClick={onCreate}><Plus size={17}/> Buat ujian</button>:null}</>}/><div className="exam-cards"><section className="panel exam-list-card"><div className="panel-head"><div><h2>Rancangan ujian</h2><p>{exams.length} sesi tersimpan</p></div><RefreshCw size={16} color="#91a0ad"/></div>{exams.map(e=>{const schedule=examSessionWindow(e,{now:scheduleNow});return <div className="running-exam" key={e.id}><div className="exam-icon"><BookOpen size={20}/></div><div><div className={e.status==='active'?'live-label':'upcoming-label'}>{statusLabel(e.status)}</div><h3>{e.title} &middot; {(e.rooms?.length?e.rooms.map(room=>room.name).join(', '):'Kelas '+e.className)}</h3><p>{(e.subjects?.length?e.subjects.map(subject=>subject.name).join(', '):e.subject)} &middot; {e.mcCount} PG + {e.essayCount} essay &middot; {e.durationMinutes} menit &middot; {e.participants} siswa</p><div className={`exam-session-pill${e.sessionDate?'':' missing'}`}><CalendarDays size={13}/>{examSessionLabel(e)}</div></div><div className="exam-actions">{canSchedule&&<button className="row-action" title="Atur sesi ujian" aria-label={`Atur sesi ${e.title}`} onClick={()=>onSchedule(e)}><CalendarDays size={16}/></button>}<button className="row-action" title="Pantau peserta" aria-label={`Pantau ${e.title}`} onClick={()=>onMonitor(e)}><Eye size={16}/></button>{canRunExam&&e.status!=='active'&&e.status!=='completed'&&<button className="row-action" disabled={!schedule.open} title={schedule.message} aria-label={schedule.open?`Jalankan ${e.title}`:`${e.title} belum dapat dijalankan`} onClick={()=>onStatus(e,'active')}><Play size={15}/></button>}{isAdmin&&e.status==='active'&&<button className="row-action" title="Akhiri ujian" aria-label={`Akhiri ${e.title}`} onClick={()=>onStatus(e,'completed')}><Pause size={15}/></button>}{isAdmin&&<button className="row-action delete-action" disabled={busy||e.status==='active'} title={e.status==='active'?'Akhiri ujian sebelum menghapus':e.in_progress>0?'Selesaikan sesi peserta sebelum menghapus':'Hapus ujian simulasi'} aria-label={`Hapus ujian ${e.title}`} onClick={()=>onDelete(e)}><Trash2 size={15}/></button>}</div></div>;})}{!exams.length&&<Empty message="Belum ada ujian" detail="Buat rancangan untuk mengacak soal bagi peserta."/>}</section><section className="panel rules-card"><div className="panel-head"><div><h2>Aturan pengacakan</h2><p>Ditegakkan di server</p></div><div className="shuffle-badge"><Shuffle size={18}/></div></div><ul><li><Check size={15}/> Bank soal dan kelas dipilih saat membuat sesi</li><li><Check size={15}/> Kuota PG dan essay divalidasi dengan stok</li><li><Check size={15}/> Soal PG & opsi diacak tiap peserta; soal essay tetap urut</li><li><Check size={15}/> Kunci jawaban tidak dikirim pada API bank</li></ul><div className="rule-note"><CircleAlert size={16}/><span>Ujian hanya dapat dijalankan pada tanggal dan jam sesi yang ditentukan. Di luar jadwal, tombol jalankan dinonaktifkan dan server menolak permintaan.</span></div></section></div></>;
+  return <><PageTitle eyebrow="PENJADWALAN & DISTRIBUSI" title="Ujian" desc="Susun sesi dari bank spesifik; server menyimpan pembagian soal per peserta." actions={<>{canSchedule&&<button className="secondary" onClick={()=>onSchedule(null)}><CalendarDays size={16}/> Atur sesi</button>}{canCreateExam?<button className="primary" onClick={onCreate}><Plus size={17}/> Buat ujian</button>:null}</>}/><div className="exam-cards"><section className="panel exam-list-card"><div className="panel-head"><div><h2>Rancangan ujian</h2><p>{exams.length} sesi tersimpan</p></div><RefreshCw size={16} color="#91a0ad"/></div>{exams.map(e=>{const schedule=examSessionWindow(e,{now:scheduleNow});return <div className="running-exam" key={e.id}><div className="exam-icon"><BookOpen size={20}/></div><div><div className={e.status==='active'?'live-label':'upcoming-label'}>{statusLabel(e.status)}</div><h3>{e.title} &middot; {(e.rooms?.length?e.rooms.map(room=>room.name).join(', '):'Kelas '+e.className)}</h3><p>{(e.subjects?.length?e.subjects.map(subject=>subject.name).join(', '):e.subject)} &middot; {e.mcCount} PG + {e.essayCount} essay &middot; {e.durationMinutes} menit &middot; {e.participants} siswa</p><div className={`exam-session-pill${e.sessionDate?'':' missing'}`}><CalendarDays size={13}/>{examSessionLabel(e)}</div></div><div className="exam-actions">{canSchedule&&<button className="row-action" title="Atur sesi ujian" aria-label={`Atur sesi ${e.title}`} onClick={()=>onSchedule(e)}><CalendarDays size={16}/></button>}<button className="row-action" title="Pantau peserta" aria-label={`Pantau ${e.title}`} onClick={()=>onMonitor(e)}><Eye size={16}/></button>{isAdmin&&onAssignProctors&&<button className="row-action" title="Atur pengawas" aria-label={`Atur pengawas ${e.title}`} onClick={()=>onAssignProctors(e)}><ShieldCheck size={16}/></button>}{canRunExam&&e.status!=='active'&&e.status!=='completed'&&<button className="row-action" disabled={!schedule.open} title={schedule.message} aria-label={schedule.open?`Jalankan ${e.title}`:`${e.title} belum dapat dijalankan`} onClick={()=>onStatus(e,'active')}><Play size={15}/></button>}{isAdmin&&e.status==='active'&&<button className="row-action" title="Akhiri ujian" aria-label={`Akhiri ${e.title}`} onClick={()=>onStatus(e,'completed')}><Pause size={15}/></button>}{isAdmin&&<button className="row-action delete-action" disabled={busy||e.status==='active'} title={e.status==='active'?'Akhiri ujian sebelum menghapus':e.in_progress>0?'Selesaikan sesi peserta sebelum menghapus':'Hapus ujian simulasi'} aria-label={`Hapus ujian ${e.title}`} onClick={()=>onDelete(e)}><Trash2 size={15}/></button>}</div></div>;})}{!exams.length&&<Empty message="Belum ada ujian" detail="Buat rancangan untuk mengacak soal bagi peserta."/>}</section><section className="panel rules-card"><div className="panel-head"><div><h2>Aturan pengacakan</h2><p>Ditegakkan di server</p></div><div className="shuffle-badge"><Shuffle size={18}/></div></div><ul><li><Check size={15}/> Bank soal dan kelas dipilih saat membuat sesi</li><li><Check size={15}/> Kuota PG dan essay divalidasi dengan stok</li><li><Check size={15}/> Soal PG & opsi diacak tiap peserta; soal essay tetap urut</li><li><Check size={15}/> Kunci jawaban tidak dikirim pada API bank</li></ul><div className="rule-note"><CircleAlert size={16}/><span>Ujian hanya dapat dijalankan pada tanggal dan jam sesi yang ditentukan. Di luar jadwal, tombol jalankan dinonaktifkan dan server menolak permintaan.</span></div></section></div></>;
 }
 function ResultsPage({results,onReview,onSaveFinalScore,busy}){
   const [session,setSession]=useState('all');
+  const [remoteResults,setRemoteResults]=useState({session:'',rows:null});
+  const [sessionError,setSessionError]=useState('');
   const sessionOptions=useMemo(()=>{
     const options=new Map();
     results.forEach(result=>{const id=String(result.examId);if(!options.has(id))options.set(id,{id,label:resultSessionLabel(result)});});
     return [...options.values()].sort((left,right)=>left.label.localeCompare(right.label,'id-ID'));
   },[results]);
   useEffect(()=>{if(session!=='all'&&!sessionOptions.some(option=>option.id===session))setSession('all');},[session,sessionOptions]);
-  const scopedResults=session==='all'?results:results.filter(result=>String(result.examId)===session);
+  useEffect(()=>{
+    let cancelled=false;
+    if(session==='all'){setRemoteResults({session:'',rows:null});setSessionError('');return ()=>{cancelled=true;};}
+    setSessionError('');
+    api(`/results?examId=${encodeURIComponent(session)}`).then(rows=>{if(!cancelled)setRemoteResults({session,rows});}).catch(err=>{if(!cancelled)setSessionError(err.message||'Hasil sesi tidak dapat dimuat.');});
+    return ()=>{cancelled=true;};
+  },[session]);
+  const scopedResults=session==='all'?results:remoteResults.session===session&&remoteResults.rows?remoteResults.rows:results.filter(result=>String(result.examId)===session);
   const flagged=scopedResults.filter(result=>result.status==='locked'||Number(result.violationCount)>0||Number(result.pendingViolationCount)>0);
   const completed=scopedResults.filter(result=>result.status==='completed'&&!Number(result.violationCount)&&!Number(result.pendingViolationCount));
   return <><PageTitle eyebrow="EVALUASI PEMBELAJARAN" title="Hasil ujian" desc="Tinjau hasil yang selesai dan sesi dengan pelanggaran. Setiap tabel dapat diunduh sebagai Excel."/>
+    {sessionError&&<div className="monitor-dashboard-error" role="alert">{sessionError}</div>}
     <div className="filter-row">{sessionOptions.length>0&&<label className="monitor-room-filter monitor-session-filter"><ClipboardList size={14}/><select value={session} onChange={event=>setSession(event.target.value)} aria-label="Filter sesi ujian"><option value="all">Semua sesi</option>{sessionOptions.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select></label>}</div>
     <div className="results-split">
       <ResultsTablePanel title="Hasil dengan pelanggaran" note="Pelanggaran terkonfirmasi atau sinyal untuk ditinjau" rows={flagged} exportName="hasil-pelanggaran-imbs.xlsx" onReview={onReview} onSaveFinalScore={onSaveFinalScore} busy={busy}/>
