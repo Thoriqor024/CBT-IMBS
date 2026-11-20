@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { RefreshCw, CircleAlert, ShieldCheck, ChevronDown, ChevronUp, Clock3, Wifi, WifiOff, Check, X, RotateCcw, DoorOpen } from 'lucide-react';
+import { isOffline, isOnline } from '../server/monitorPresence.js';
 
 const eventLabels = {
   tab_hidden: 'Tab ujian tersembunyi',
@@ -19,7 +20,7 @@ export default function Monitor({exam,students,canManage,canRecordViolation=fals
   useEffect(()=>{if(!exam?.id)return;const refresh=setInterval(()=>onRefresh(),5000),clock=setInterval(()=>setNow(Date.now()),1000);return()=>{clearInterval(refresh);clearInterval(clock);};},[exam?.id]);
   const rooms=useMemo(()=>[...new Set(students.map(s=>s.roomName).filter(Boolean))].sort((left,right)=>left.localeCompare(right,'id-ID')),[students]);
   const visible=room==='all'?students:students.filter(s=>s.roomName===room);
-  const count={running:visible.filter(s=>s.status==='in_progress').length,done:visible.filter(s=>s.status==='completed'&&!Number(s.violationCount)).length,warning:visible.filter(s=>s.status==='in_progress'&&(s.violationReviewRequired||Number(s.violationCount)>0)).length,blocked:visible.filter(s=>s.status==='locked').length,pending:visible.reduce((total,s)=>total+(s.events||[]).filter(event=>event.reviewStatus==='pending').length,0),offline:visible.filter(s=>s.status==='in_progress'&&(!s.lastPingAt||now-Date.parse(s.lastPingAt)>=90000)).length};
+  const count={running:visible.filter(s=>s.status==='in_progress').length,done:visible.filter(s=>s.status==='completed'&&!Number(s.violationCount)).length,warning:visible.filter(s=>s.status==='in_progress'&&(s.violationReviewRequired||Number(s.violationCount)>0)).length,blocked:visible.filter(s=>s.status==='locked').length,pending:visible.reduce((total,s)=>total+(s.events||[]).filter(event=>event.reviewStatus==='pending').length,0),offline:visible.filter(s=>s.status==='in_progress'&&isOffline(s.lastPingAt,now)).length};
   const toggle=id=>setExpanded(current=>({...current,[id]:!current[id]}));
   return <>
     <div className="monitor-legend"><span><i className="monitor-signal in_progress"/>Sedang ujian · abu-abu</span><span><i className="monitor-signal completed"/>Selesai · hijau</span><span><i className="monitor-signal warning"/>Menunggu keputusan · kuning</span><span><i className="monitor-signal violation"/>Diblokir oleh pengawas · merah</span></div>
@@ -31,7 +32,7 @@ export default function Monitor({exam,students,canManage,canRecordViolation=fals
       return <div className="monitor-person" key={s.id}>
         <div className={`monitor-row ${blocked?'has-violation':warning?'has-warning':''}`}>
           <span className={`monitor-signal ${signal}`}/><b>{s.name}</b><code>{s.username}</code><span>{s.className}</span><span className="monitor-room" title="Ruang ujian">{s.roomName||'—'}</span>
-          <span className={`monitor-state ${blocked?'violation-text':warning?'warning-text':''}`}>{label}{s.status==='in_progress'&&(()=>{const live=Boolean(s.lastPingAt&&now-Date.parse(s.lastPingAt)<35000);return <small className={`monitor-presence ${live?'online':'offline'}`}>{live?<Wifi size={11}/>:<WifiOff size={11}/>} {live?'Online':'Terputus'}</small>;})()}</span>
+          <span className={`monitor-state ${blocked?'violation-text':warning?'warning-text':''}`}>{label}{s.status==='in_progress'&&(()=>{const live=isOnline(s.lastPingAt,now);return <small className={`monitor-presence ${live?'online':'offline'}`}>{live?<Wifi size={11}/>:<WifiOff size={11}/>} {live?'Online':'Terputus'}</small>;})()}</span>
           <span>{s.score??'—'}</span>
           <div className="monitor-actions">
             {events.length>0&&<button className="evidence-toggle" onClick={()=>toggle(s.id)} title="Tampilkan riwayat sinyal"><Clock3 size={13}/>{events.length}{expanded[s.id]?<ChevronUp size={13}/>:<ChevronDown size={13}/>}</button>}

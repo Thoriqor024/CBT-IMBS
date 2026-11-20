@@ -40,6 +40,7 @@ import { calculateItemDifficulty } from './itemAnalysis.js';
 import { createTenantBackupService } from './tenantBackupService.js';
 import { normalizeIdempotencyKey } from './idempotency.js';
 import { attachExamSessionSchedule, examSessionWindow, resolveExamTimeZone } from './examSchedule.js';
+import { OFFLINE_THRESHOLD_MS } from './monitorPresence.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -2116,7 +2117,7 @@ async function monitorRoomSummaryRows(role,userId,examFilter){
     count(*) FILTER (WHERE es.status='completed')::int AS completed,
     count(*) FILTER (WHERE es.status='locked')::int AS locked,
     count(*) FILTER (WHERE es.violation_count>0)::int AS violations,
-    count(*) FILTER (WHERE es.status='in_progress' AND (es.last_ping_at IS NULL OR es.last_ping_at < clock_timestamp() - INTERVAL '90 seconds'))::int AS offline,
+    count(*) FILTER (WHERE es.status='in_progress' AND (es.last_ping_at IS NULL OR es.last_ping_at < clock_timestamp() - ${OFFLINE_THRESHOLD_MS} * INTERVAL '1 millisecond'))::int AS offline,
     COALESCE((SELECT jsonb_agg(u2.full_name ORDER BY u2.full_name) FROM exam_room_proctors erp JOIN users u2 ON u2.id=erp.proctor_id WHERE erp.room_id=room.id),'[]'::jsonb) AS proctors
     FROM exams e JOIN question_banks b ON b.id=e.bank_id JOIN exam_sessions es ON es.exam_id=e.id
     LEFT JOIN exam_rooms room ON room.id=es.room_id

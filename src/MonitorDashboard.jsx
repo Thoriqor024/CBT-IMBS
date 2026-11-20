@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, apiDownload } from './api';
+import { isOffline, isOnline } from '../server/monitorPresence.js';
 import { RefreshCw, Clock3, ChevronDown, ChevronUp, Wifi, WifiOff, Check, X, CircleAlert, RotateCcw, Search, DoorOpen, ClipboardList, Download } from 'lucide-react';
 
 const eventLabels = {
@@ -12,7 +13,6 @@ const eventLabels = {
   admin_report: 'Catatan pengawas',
   admin_reset: 'Sesi dipulihkan oleh pengawas',
 };
-const OFFLINE_AFTER_MS = 90000;
 
 export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onReviewSession, onViolation, onReset, canRecordViolation = false, isPengawas = false }) {
   const [sessions, setSessions] = useState([]);
@@ -41,10 +41,10 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
         setServerRoomSummaries(summary);
         setCoverage(cover);
       } else {
-        const [all, summary] = await Promise.all([api('/monitor'), api('/monitor/rooms')]);
+        const all = await api('/monitor');
         setCatalog(all);
         setSessions(all);
-        setServerRoomSummaries(summary);
+        setServerRoomSummaries([]);
         setCoverage(null);
       }
     } catch (err) {
@@ -86,7 +86,7 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
   const completed = useMemo(() => scopedSessions.filter(student => student.status === 'completed' && !isViolation(student)), [scopedSessions]);
   const active = useMemo(() => scopedSessions.filter(student => student.status === 'in_progress' && !isViolation(student)), [scopedSessions]);
   const notStarted = useMemo(() => scopedSessions.filter(student => student.status === 'not_started' && !isViolation(student)), [scopedSessions]);
-  const offline = useMemo(() => active.filter(student => !student.lastPingAt || now - Date.parse(student.lastPingAt) >= OFFLINE_AFTER_MS), [active, now]);
+  const offline = useMemo(() => active.filter(student => isOffline(student.lastPingAt, now)), [active, now]);
   const localRoomSummaries = useMemo(() => {
     const summary = new Map();
     scopedSessions.forEach(student => {
@@ -97,7 +97,7 @@ export default function MonitorDashboard({ refreshKey, busy, onReviewEvent, onRe
       else if (student.status === 'in_progress') entry.active += 1;
       else if (student.status === 'completed') entry.completed += 1;
       if (isViolation(student)) entry.violations += 1;
-      if (student.status === 'in_progress' && (!student.lastPingAt || now - Date.parse(student.lastPingAt) >= OFFLINE_AFTER_MS)) entry.offline += 1;
+      if (student.status === 'in_progress' && isOffline(student.lastPingAt, now)) entry.offline += 1;
       summary.set(name, entry);
     });
     return [...summary.values()].sort((left, right) => left.name.localeCompare(right.name, 'id-ID'));
@@ -178,7 +178,7 @@ function MonitorTable({ students, expanded, toggle, now, busy, onReviewEvent, on
       const events = Array.isArray(student.events) ? [...student.events].reverse() : [];
       const held = student.status === 'in_progress' && Boolean(student.violationReviewRequired);
       const isActive = student.status === 'in_progress';
-      const online = Boolean(student.lastPingAt && now - Date.parse(student.lastPingAt) < 35000);
+      const online = isOnline(student.lastPingAt, now);
       return <FragmentRow key={`${student.examId}-${student.id}`} student={student} events={events} expanded={Boolean(expanded[student.id])} toggle={() => toggle(student.id)} held={held} isActive={isActive} online={online} busy={busy} onReviewEvent={onReviewEvent} onReviewSession={onReviewSession} onViolation={onViolation} onReset={onReset} canRecordViolation={canRecordViolation} showReviewActions={showReviewActions} />;
     })}</tbody>
   </table></div>;
