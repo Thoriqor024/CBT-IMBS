@@ -39,6 +39,7 @@ import { validateSubjectInput } from './subjectValidation.js';
 import { calculateItemDifficulty } from './itemAnalysis.js';
 import { createTenantBackupService } from './tenantBackupService.js';
 import { normalizeIdempotencyKey } from './idempotency.js';
+import { examSessionWindow, resolveExamTimeZone } from './examSchedule.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -204,7 +205,7 @@ const revokeUserSessions = (client,userId,tenantId,exceptSid=null) => tenantRunt
     exceptSid?[String(userId),exceptSid]:[String(userId)]);
 const safeUser = (u,tenant) => ({id:u.id,username:u.username,email:u.email||null,name:u.full_name,role:u.role,className:u.class_name,...(tenant?{tenantId:tenant.id,tenantCode:tenant.code,tenantName:tenant.displayName}: {})});
 let defaultViolationThreshold = 2; const getViolationThreshold=()=>Number(tenantRuntime?.context.getCurrent()?.violationThreshold ?? defaultViolationThreshold);
-const examTimezone=(()=>{const candidate=String(process.env.EXAM_TIMEZONE||'Asia/Jakarta').trim()||'Asia/Jakarta';try{new Intl.DateTimeFormat('en-US',{timeZone:candidate});return candidate;}catch{return 'Asia/Jakarta';}})();
+const examTimezone=resolveExamTimeZone(process.env.EXAM_TIMEZONE);
 const userRateLimit = (windowMs, limit, message) => rateLimit({
   windowMs,
   limit,
@@ -1813,7 +1814,21 @@ app.delete('/api/exams/:id',allow('admin'),asyncRoute(async(req,res)=>{
     res.json({ok:true,deleted:{sessions:deleted.sessions,responses:deleted.responses,violations:deleted.violations}});
   }catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
 }));
-app.patch('/api/exams/:id/status',allow('admin','pengawas'),requireExamScope,asyncRoute(async(req,res)=>{const status=String(req.body.status);if(!['draft','scheduled','active','completed'].includes(status))return res.status(400).json({error:'Status tidak valid.'});if(req.session.user.role==='pengawas'&&status!=='active')return res.status(403).json({error:'Pengawas hanya dapat menjalankan ujian.'});const q=await pool.query(`UPDATE exams SET status=$1 WHERE id=$2 AND ($1<>'active' OR (session_number IS NOT NULL AND session_date IS NOT NULL AND session_start IS NOT NULL AND session_end IS NOT NULL)) RETURNING id,status`,[status,req.params.id]);if(!q.rowCount){const exists=await pool.query('SELECT 1 FROM exams WHERE id=$1',[req.params.id]);if(!exists.rowCount)return res.status(404).json({error:'Ujian tidak ditemukan.'});return res.status(409).json({error:'Tentukan sesi ujian (hari/tanggal dan jam mulai–berakhir) sebelum menjalankan ujian.'});}await audit(pool,req.session.user.id,'exam.status',{examId:Number(req.params.id),status});res.json(q.rows[0]);}));
+app.patch('/api/exams/:id/status',allow('admin','pengawas'),requireExamScope,asyncRoute(async(req,res)=>{
+  const status=String(req.body.status);
+  if(!['draft','scheduled','active','completed'].includes(status))return res.status(400).json({error:'Status tidak valid.'});
+  if(req.session.user.role==='pengawas'&&status!=='active')return res.status(403).json({error:'Pengawas hanya dapat menjalankan ujian.'});
+  if(status==='active'){
+    const current=await pool.query(`SELECT id,session_number AS "sessionNumber",to_char(session_date,'YYYY-MM-DD') AS "sessionDate",to_char(session_start,'HH24:MI') AS "sessionStart",to_char(session_end,'HH24:MI') AS "sessionEnd" FROM exams WHERE id=$1`,[req.params.id]);
+    if(!current.rowCount)return res.status(404).json({error:'Ujian tidak ditemukan.'});
+    const schedule=examSessionWindow(current.rows[0],{timeZone:examTimezone});
+    if(!schedule.open)return res.status(409).json({error:schedule.message});
+  }
+  const q=await pool.query('UPDATE exams SET status=$1 WHERE id=$2 RETURNING id,status',[status,req.params.id]);
+  if(!q.rowCount)return res.status(404).json({error:'Ujian tidak ditemukan.'});
+  await audit(pool,req.session.user.id,'exam.status',{examId:Number(req.params.id),status});
+  res.json(q.rows[0]);
+}));
 app.put('/api/exams/:id/session',allow('admin','teacher'),requireExamScope,asyncRoute(async(req,res)=>{
   const sessionNumber=Number(req.body?.sessionNumber);
   const date=String(req.body?.date||'').trim();
@@ -2065,19 +2080,17 @@ app.post('/api/student/exams/:examId/start',allow('student'),startLimiter,asyncR
       e.session_number,e.session_start,e.session_end,
       to_char(e.session_date,'YYYY-MM-DD') AS session_date_label,
       to_char(e.session_start,'HH24:MI') AS session_start_label,
-      to_char(e.session_end,'HH24:MI') AS session_end_label,
-      (e.session_number IS NOT NULL AND e.session_date IS NOT NULL AND e.session_start IS NOT NULL AND e.session_end IS NOT NULL) AS has_session,
-      (timezone($3::text,clock_timestamp()))::date = e.session_date AS session_day_matches,
-      ((timezone($3::text,clock_timestamp()))::time >= e.session_start AND (timezone($3::text,clock_timestamp()))::time < e.session_end) AS session_time_matches
+      to_char(e.session_end,'HH24:MI') AS session_end_label
       FROM exam_sessions es JOIN exams e ON e.id=es.exam_id
-      WHERE es.exam_id=$1 AND es.student_id=$2 FOR UPDATE OF es FOR SHARE OF e`,[req.params.examId,req.session.user.id,examTimezone]);
+      WHERE es.exam_id=$1 AND es.student_id=$2 FOR UPDATE OF es FOR SHARE OF e`,[req.params.examId,req.session.user.id]);
     if(!q.rowCount)throw Object.assign(new Error('Anda tidak terdaftar sebagai peserta ujian ini.'),{status:404});
     const row=q.rows[0];sessionId=row.id;
     if(row.status==='locked')throw Object.assign(new Error('Sesi dikunci karena batas pelanggaran terlampaui. Nilai akhir ditentukan guru.'),{status:423});
     if(row.status==='completed')throw Object.assign(new Error('Ujian ini sudah selesai.'),{status:409});
     if(row.exam_status!=='active')throw Object.assign(new Error('Ujian tidak lagi aktif.'),{status:409});
-    if(row.status==='not_started'&&row.has_session&&(!row.session_day_matches||!row.session_time_matches))throw Object.assign(new Error(`Ujian sesi ${row.session_number} dijadwalkan pada ${row.session_date_label} pukul ${row.session_start_label}–${row.session_end_label}. Anda hanya dapat memulai ujian pada rentang waktu tersebut.`),{status:409});
     if(row.status==='not_started'){
+      const schedule=examSessionWindow({sessionNumber:row.session_number,sessionDate:row.session_date_label,sessionStart:row.session_start_label,sessionEnd:row.session_end_label},{timeZone:examTimezone});
+      if(!schedule.open)throw Object.assign(new Error(schedule.message),{status:409});
       if(!row.entry_pin_hash)throw Object.assign(new Error('Pengawas belum menerbitkan PIN untuk ujian ini.'),{status:409});
       const pin=String(req.body?.pin||'').trim();
       if(!/^\d{4,6}$/.test(pin)||!(await verifyExamPin(req.params.examId, pin, row.entry_pin_hash)))throw Object.assign(new Error('PIN ujian tidak benar.'),{status:401});
