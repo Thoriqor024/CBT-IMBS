@@ -28,3 +28,18 @@
 .monitor-room-card .active::before{background:#aeb6c2}
 .monitor-room-card .done::before{background:#4cab79}
 .monitor-room-card .flagged::before{background:#dc5f56}
+.monitor-room-card .offline::before{background:#d98a3d}
+.monitor-watchdog,.monitor-coverage-warning{display:flex;align-items:flex-start;gap:9px;margin-bottom:12px;padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5}
+.monitor-watchdog{border:1px solid #f0dcc4;background:#fffaf3;color:#8a6428}
+.monitor-coverage-warning{border:1px solid #f2dede;background:#fff7f6;color:#9b4d45}
+.monitor-watchdog>svg,.monitor-coverage-warning>svg{flex-shrink:0;margin-top:1px}
+.monitor-watchdog b,.monitor-coverage-warning b{display:block;margin-bottom:2px;font-size:12px}
+.monitor-watchdog p,.monitor-coverage-warning p{margin:0;color:inherit;opacity:.85;font-size:12px}
+.monitor-offline-count{color:#b5642c}
+.audit-panel .panel-head{align-items:center}
+.audit-table{max-width:100%;overflow:auto}
+.audit-table table{width:100%;min-width:760px;border-collapse:collapse;text-align:left}
+.audit-table th{padding:9px 8px;border-bottom:1px solid #edf0f2;color:#9aa5b2;font-size:12px;font-weight:700;letter-spacing:.25px;white-space:nowrap}
+.audit-table td{padding:10px 8px;border-bottom:1px solid #f0f2f4;color:#657286;font-size:12px;vertical-align:top;line-height:1.6}
+.audit-action{display:inline-flex;padding:4px 8px;border-radius:7px;background:#f2f6f4;color:#4d7a63;font-size:12px;font-weight:600;white-space:nowrap}
+.audit-detail{max-width:460px}

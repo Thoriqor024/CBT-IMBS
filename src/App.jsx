@@ -3,7 +3,7 @@ import readXlsxFile from 'read-excel-file/browser';
 import { exportResults } from './resultsExport.js';
 import { exportItemAnalysis } from './itemAnalysisExport.js';
 import { exportQuestionBank } from './questionBankExport.js';
-import { LayoutDashboard, BookOpen, Users, ClipboardList, ChartNoAxesColumn, BarChart3, Settings, Search, Bell, Plus, ChevronDown, MoreHorizontal, ArrowUpRight, Clock3, CircleCheck, CircleAlert, Sparkles, FileSpreadsheet, Shuffle, ChevronRight, X, Menu, GraduationCap, BookMarked, CalendarDays, Layers3, Check, Download, Upload, Eye, Trash2, ShieldCheck, Scale, Wifi, CircleHelp, LogOut, KeyRound, Play, Pause, LockKeyhole, RefreshCw, Pencil, Copy, DoorOpen } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Users, ClipboardList, ChartNoAxesColumn, BarChart3, Settings, Search, Bell, Plus, ChevronDown, MoreHorizontal, ArrowUpRight, Clock3, CircleCheck, CircleAlert, Sparkles, FileSpreadsheet, Shuffle, ChevronRight, X, Menu, GraduationCap, BookMarked, CalendarDays, Layers3, Check, Download, Upload, Eye, Trash2, ShieldCheck, Scale, Wifi, CircleHelp, LogOut, KeyRound, Play, Pause, LockKeyhole, RefreshCw, Pencil, Copy, DoorOpen, History } from 'lucide-react';
 import { api } from './api';
 import PasswordInput from './PasswordInput.jsx';
 import { getInitialSchoolCode, saveLastSchoolCode } from './tenantDiscovery.js';
@@ -19,6 +19,7 @@ import { downloadTeacherImportTemplate } from './teacherImportFormat.js';
 import PlatformOwnerLogin from './PlatformOwnerLogin.jsx';
 import PlatformOwnerConsole from './PlatformOwnerConsole.jsx';
 import ExamRoomsPage from './ExamRoomsPage.jsx';
+import AssignmentAuditPage from './AssignmentAuditPage.jsx';
 import { examSessionWindow } from '../server/examSchedule.js';
 
 const nav=[['Ringkasan',LayoutDashboard],['Mata Pelajaran',BookMarked],['Bank Soal',BookOpen],['Siswa',Users],['Ujian',ClipboardList],['Pantau Ujian',Eye],['Hasil Ujian',ChartNoAxesColumn],['Analisis Soal',BarChart3],['Koreksi Nilai Siswa',Pencil],['Ruang Ujian',DoorOpen]];
@@ -221,6 +222,19 @@ export default function App(){
               <GraduationCap size={18} />
               <span>Akun staf</span>
             </button>
+            <button
+              className={
+                "nav-item " + (page === "Audit Penugasan" ? "selected" : "")
+              }
+              onClick={() => {
+                setPage("Audit Penugasan");
+                setMobile(false);
+                setQuery("");
+              }}
+            >
+              <History size={18} />
+              <span>Audit Penugasan</span>
+            </button>
           </>
         )}
         <div className="sidebar-bottom">
@@ -359,6 +373,7 @@ export default function App(){
               onDelete={deleteTeacher}
             />
           )}
+          {page === "Audit Penugasan" && isAdmin && <AssignmentAuditPage />}
           {page === "Ruang Ujian" && isAdmin && (
             <ExamRoomsPage
               rooms={rooms}
@@ -1792,11 +1807,15 @@ function ResultsPage({results,onReview,onSaveFinalScore,busy}){
     return ()=>{cancelled=true;};
   },[session]);
   const scopedResults=session==='all'?results:remoteResults.session===session&&remoteResults.rows?remoteResults.rows:results.filter(result=>String(result.examId)===session);
-  const flagged=scopedResults.filter(result=>result.status==='locked'||Number(result.violationCount)>0||Number(result.pendingViolationCount)>0);
-  const completed=scopedResults.filter(result=>result.status==='completed'&&!Number(result.violationCount)&&!Number(result.pendingViolationCount));
+  const [room,setRoom]=useState('all');
+  const roomOptions=useMemo(()=>[...new Set(scopedResults.map(result=>result.roomName).filter(Boolean))].sort((left,right)=>left.localeCompare(right,'id-ID')),[scopedResults]);
+  useEffect(()=>{if(room!=='all'&&!roomOptions.includes(room))setRoom('all');},[room,roomOptions]);
+  const visibleResults=room==='all'?scopedResults:scopedResults.filter(result=>result.roomName===room);
+  const flagged=visibleResults.filter(result=>result.status==='locked'||Number(result.violationCount)>0||Number(result.pendingViolationCount)>0);
+  const completed=visibleResults.filter(result=>result.status==='completed'&&!Number(result.violationCount)&&!Number(result.pendingViolationCount));
   return <><PageTitle eyebrow="EVALUASI PEMBELAJARAN" title="Hasil ujian" desc="Tinjau hasil yang selesai dan sesi dengan pelanggaran. Setiap tabel dapat diunduh sebagai Excel."/>
     {sessionError&&<div className="monitor-dashboard-error" role="alert">{sessionError}</div>}
-    <div className="filter-row">{sessionOptions.length>0&&<label className="monitor-room-filter monitor-session-filter"><ClipboardList size={14}/><select value={session} onChange={event=>setSession(event.target.value)} aria-label="Filter sesi ujian"><option value="all">Semua sesi</option>{sessionOptions.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select></label>}</div>
+    <div className="filter-row">{sessionOptions.length>0&&<label className="monitor-room-filter monitor-session-filter"><ClipboardList size={14}/><select value={session} onChange={event=>setSession(event.target.value)} aria-label="Filter sesi ujian"><option value="all">Semua sesi</option>{sessionOptions.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select></label>}{roomOptions.length>0&&<label className="monitor-room-filter"><DoorOpen size={14}/><select value={room} onChange={event=>setRoom(event.target.value)} aria-label="Filter ruang ujian"><option value="all">Semua ruang</option>{roomOptions.map(name=><option key={name} value={name}>{name}</option>)}</select></label>}</div>
     <div className="results-split">
       <ResultsTablePanel title="Hasil dengan pelanggaran" note="Pelanggaran terkonfirmasi atau sinyal untuk ditinjau" rows={flagged} exportName="hasil-pelanggaran-imbs.xlsx" onReview={onReview} onSaveFinalScore={onSaveFinalScore} busy={busy}/>
       <ResultsTablePanel title="Ujian selesai" note="Sesi selesai tanpa pelanggaran" rows={completed} exportName="hasil-selesai-imbs.xlsx" onReview={onReview} onSaveFinalScore={onSaveFinalScore} busy={busy}/>
@@ -1811,7 +1830,7 @@ function ResultsTablePanel({title,note,rows,exportName,onReview,onSaveFinalScore
     <label className="results-search"><Search size={14}/><input value={query} onChange={event=>setQuery(event.target.value)} placeholder="Cari nama siswa..." aria-label={`Cari nama siswa pada card ${title}`}/></label>
     <div className="student-table wide results-table"><table><thead><tr><th>UJIAN / KELAS</th><th>NAMA SISWA</th><th>STATUS</th><th>PELANGGARAN</th><th>SINYAL MENUNGGU</th><th>PG BENAR</th><th>PG SALAH</th><th>PG KOSONG</th><th>ESSAY</th><th>SELESAI</th><th>NILAI AKHIR</th></tr></thead><tbody>
       {filteredRows.map((r,i)=><tr key={r.examId+'-'+r.studentId+'-'+i}>
-        <td><b>{r.title}</b><small>{r.username} · {r.className}</small></td><td>{r.studentName}</td><td>{statusLabel(r.status)}</td><td>{Number(r.violationCount)||0}</td><td>{Number(r.pendingViolationCount)||0}</td>
+        <td><b>{r.title}</b><small>{r.username} · {r.className}{r.roomName ? ' · ' + r.roomName : ''}</small></td><td>{r.studentName}</td><td>{statusLabel(r.status)}</td><td>{Number(r.violationCount)||0}</td><td>{Number(r.pendingViolationCount)||0}</td>
         <td className="result-metric">{r.mcCorrectCount}<small>{formatPoints(r.mcPointsEarned)} / {formatPoints(r.mcPointsTotal)} poin</small></td>
         <td className="result-metric">{r.mcWrongCount}</td><td className="result-metric">{r.mcUnansweredCount}</td>
         <td>{r.essayCount>0?<button className="text-button" onClick={()=>onReview(r)}>{r.essayPending?'Koreksi':'Lihat nilai'}</button>:'-'}</td>

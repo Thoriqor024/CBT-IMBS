@@ -320,6 +320,33 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
     const filteredResults = await request(baseUrl, `/results?examId=${assignedExamId}`, { cookie: adminCookie });
     assert.equal(filteredResults.status, 200, JSON.stringify(filteredResults.data));
     assert.ok(filteredResults.data.every(row => String(row.examId) === String(assignedExamId)), 'Filter sesi harus membatasi baris hasil ujian.');
+    assert.ok(filteredResults.data.every(row => 'roomName' in row), 'Hasil ujian harus membawa nama ruang untuk filter ruang.');
+
+    // Ringkasan ruang dihitung server-side dan mengikuti cakupan pengawas.
+    const roomSummary = await request(baseUrl, `/monitor/rooms?examId=${assignedExamId}`, { cookie: adminCookie });
+    assert.equal(roomSummary.status, 200, JSON.stringify(roomSummary.data));
+    assert.deepEqual(roomSummary.data.map(row => `${row.roomName}:${row.total}:${row.notStarted}:${row.active}:${row.offline}`), ['Tanpa ruang:2:1:1:1'], 'Ringkasan ruang harus menghitung status dan peserta terputus.');
+    const proctorSummary = await request(baseUrl, `/monitor/rooms?examId=${assignedExamId}`, { cookie: proctorCookie });
+    assert.equal(proctorSummary.status, 200);
+    assert.deepEqual(proctorSummary.data.map(row => row.total), [2], 'Pengawas hanya menerima ringkasan dalam cakupannya.');
+    const otherSummary = await request(baseUrl, `/monitor/rooms?examId=${assignedExamId}`, { cookie: otherProctorCookie });
+    assert.deepEqual(otherSummary.data, [], 'Pengawas tanpa penugasan tidak menerima ringkasan ruang.');
+
+    // Cakupan pengawas per ruang untuk peringatan ruang tanpa pengawas.
+    const coverage = await request(baseUrl, `/exams/${assignedExamId}/proctor-coverage`, { cookie: adminCookie });
+    assert.equal(coverage.status, 200, JSON.stringify(coverage.data));
+    assert.deepEqual(coverage.data.examProctors, ['Pengawas A']);
+    assert.deepEqual(coverage.data.rooms, []);
+    const teacherCoverage = await request(baseUrl, `/exams/${assignedExamId}/proctor-coverage`, { cookie: teacherCookie });
+    assert.ok([200, 404].includes(teacherCoverage.status), 'Guru hanya boleh membuka cakupan ujian yang dapat diakses.');
+
+    // Ekspor berita acara per ruang memakai ringkasan server yang sama.
+    const beritaAcara = await fetch(`${baseUrl}/api/monitor/rooms/export?examId=${assignedExamId}`, { headers: { Cookie: adminCookie } });
+    assert.equal(beritaAcara.status, 200);
+    assert.match(beritaAcara.headers.get('content-type') || '', /text\/csv/);
+    const beritaAcaraCsv = await beritaAcara.text();
+    assert.match(beritaAcaraCsv, /"Ujian","Ruang","Pengawas"/);
+    assert.match(beritaAcaraCsv, /"Ujian Terawasi A","Tanpa ruang"/);
 
     // Penugasan pengawas langsung dari baris ujian, lengkap dengan audit perubahannya.
     const assignment = await request(baseUrl, `/exams/${assignedExamId}/proctors`, {
@@ -341,6 +368,11 @@ test('migrasi 006 diterapkan dan pengawas hanya menerima ujian yang di-assign', 
     });
     assert.equal(restoredAssignment.status, 200);
     assert.deepEqual(restoredAssignment.data.proctors.map(row => row.name), ['Pengawas A']);
+    const assignmentAuditList = await request(baseUrl, '/audit/assignments', { cookie: adminCookie });
+    assert.equal(assignmentAuditList.status, 200, JSON.stringify(assignmentAuditList.data));
+    assert.ok(assignmentAuditList.data.some(row => row.action === 'exam.proctors.set' && row.actorName === 'Integration Admin'), 'Audit penugasan harus menampilkan perubahan pengawas ujian.');
+    const teacherAuditList = await request(baseUrl, '/audit/assignments', { cookie: teacherCookie });
+    assert.equal(teacherAuditList.status, 403, 'Audit penugasan hanya untuk admin.');
 
     const assignedDetail = await request(baseUrl, `/exams/${assignedExamId}/monitor`, { cookie: proctorCookie });
     assert.equal(assignedDetail.status, 200);

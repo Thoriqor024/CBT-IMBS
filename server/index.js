@@ -2107,6 +2107,48 @@ app.get('/api/monitor',allow('admin','teacher','pengawas'),asyncRoute(async(req,
     GROUP BY e.id,es.id,u.id,mon_room.name ORDER BY e.created_at DESC,u.full_name`,[req.session.user.role,req.session.user.id,examFilter]);
   res.json(q.rows);
 }));
+const monitorRoomSummaryWhere=`($1='admin' OR ($1='pengawas' AND ((es.room_id IS NULL AND EXISTS(SELECT 1 FROM exam_proctors ep WHERE ep.exam_id=e.id AND ep.proctor_id=$2)) OR (es.room_id IS NOT NULL AND EXISTS(SELECT 1 FROM exam_room_proctors erp WHERE erp.proctor_id=$2 AND erp.room_id=es.room_id)))) OR EXISTS(SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*'))))) AND ($3::bigint IS NULL OR e.id=$3)`;
+async function monitorRoomSummaryRows(role,userId,examFilter){
+  const q=await pool.query(`SELECT e.id AS "examId",e.title AS "examTitle",COALESCE(room.name,'Tanpa ruang') AS "roomName",
+    count(es.id)::int AS total,
+    count(*) FILTER (WHERE es.status='not_started')::int AS "notStarted",
+    count(*) FILTER (WHERE es.status='in_progress')::int AS active,
+    count(*) FILTER (WHERE es.status='completed')::int AS completed,
+    count(*) FILTER (WHERE es.status='locked')::int AS locked,
+    count(*) FILTER (WHERE es.violation_count>0)::int AS violations,
+    count(*) FILTER (WHERE es.status='in_progress' AND (es.last_ping_at IS NULL OR es.last_ping_at < clock_timestamp() - INTERVAL '90 seconds'))::int AS offline,
+    COALESCE((SELECT jsonb_agg(u2.full_name ORDER BY u2.full_name) FROM exam_room_proctors erp JOIN users u2 ON u2.id=erp.proctor_id WHERE erp.room_id=room.id),'[]'::jsonb) AS proctors
+    FROM exams e JOIN question_banks b ON b.id=e.bank_id JOIN exam_sessions es ON es.exam_id=e.id
+    LEFT JOIN exam_rooms room ON room.id=es.room_id
+    WHERE ${monitorRoomSummaryWhere}
+    GROUP BY e.id,room.id,room.name ORDER BY e.created_at DESC,room.name NULLS FIRST`,[role,userId,examFilter]);
+  return q.rows;
+}
+app.get('/api/monitor/rooms',allow('admin','teacher','pengawas'),asyncRoute(async(req,res)=>{
+  const examIdParam=Number(req.query.examId);const examFilter=Number.isSafeInteger(examIdParam)&&examIdParam>0?examIdParam:null;
+  res.json(await monitorRoomSummaryRows(req.session.user.role,req.session.user.id,examFilter));
+}));
+app.get('/api/monitor/rooms/export',allow('admin','teacher','pengawas'),asyncRoute(async(req,res)=>{
+  const examIdParam=Number(req.query.examId);const examFilter=Number.isSafeInteger(examIdParam)&&examIdParam>0?examIdParam:null;
+  const rows=await monitorRoomSummaryRows(req.session.user.role,req.session.user.id,examFilter);
+  const header=['Ujian','Ruang','Pengawas','Siswa','Belum Mulai','Mengerjakan','Selesai','Diblokir','Pelanggaran','Terputus'];
+  const cell=value=>`"${String(value??'').replaceAll('"','""')}"`;
+  const body=rows.map(row=>[row.examTitle,row.roomName,(row.proctors||[]).join('; '),row.total,row.notStarted,row.active,row.completed,row.locked,row.violations,row.offline].map(cell).join(','));
+  res.set('Content-Type','text/csv; charset=utf-8')
+    .set('Content-Disposition',`attachment; filename="berita-acara${examFilter?`-ujian-${examFilter}`:''}.csv"`)
+    .set('Cache-Control','private, no-store');
+  res.send('\uFEFF'+[header.map(cell).join(','),...body].join('\r\n')+'\r\n');
+}));
+app.get('/api/exams/:id/proctor-coverage',allow('admin','teacher'),requireExamScope,asyncRoute(async(req,res)=>{
+  const examId=Number(req.params.id);
+  const [rooms,examProctors]=await Promise.all([
+    pool.query(`SELECT room.id AS "roomId",room.name AS "roomName",
+      COALESCE((SELECT jsonb_agg(u.full_name ORDER BY u.full_name) FROM exam_room_proctors erp JOIN users u ON u.id=erp.proctor_id WHERE erp.room_id=room.id),'[]'::jsonb) AS proctors
+      FROM exam_room_links erl JOIN exam_rooms room ON room.id=erl.room_id WHERE erl.exam_id=$1 ORDER BY room.name`,[examId]),
+    pool.query(`SELECT COALESCE(jsonb_agg(u.full_name ORDER BY u.full_name),'[]'::jsonb) AS proctors FROM exam_proctors ep JOIN users u ON u.id=ep.proctor_id WHERE ep.exam_id=$1`,[examId]),
+  ]);
+  res.json({examId,examProctors:examProctors.rows[0]?.proctors||[],rooms:rooms.rows.map(row=>({...row,covered:Array.isArray(row.proctors)&&row.proctors.length>0}))});
+}));
 app.get('/api/student/exams',allow('student'),asyncRoute(async(req,res)=>{const q=await pool.query(`SELECT es.id AS "sessionId",e.id AS "examId",e.title,e.duration_minutes AS "durationMinutes",e.status AS "examStatus",e.session_number AS "sessionNumber",to_char(e.session_date,'YYYY-MM-DD') AS "sessionDate",to_char(e.session_start,'HH24:MI') AS "sessionStart",to_char(e.session_end,'HH24:MI') AS "sessionEnd",es.status AS "sessionStatus",es.violation_count AS "violationCount",es.final_score AS score,es.last_ping_at AS "lastPingAt",(e.entry_pin_hash IS NOT NULL AND e.entry_pin_expires_at>clock_timestamp()) AS "pinReady",s.name AS subject,b.topic,s.language_code AS "languageCode",s.text_direction AS "textDirection",
   u.class_name AS "studentClass",
   COALESCE((SELECT b2.grade FROM exam_questions eq2 JOIN questions q2 ON q2.id=eq2.question_id JOIN question_banks b2 ON b2.id=q2.bank_id WHERE eq2.session_id=es.id LIMIT 1), b.grade) AS grade
@@ -2419,7 +2461,8 @@ app.get('/api/results',allow('admin','teacher'),asyncRoute(async(req,res)=>{
       COALESCE(overview.essay_count,0)::int AS "essayCount",
       COALESCE(overview.essay_pending,FALSE) AS "essayPending",
       COALESCE(violation_audit.pending_count,0)::int AS "pendingViolationCount",
-      COALESCE(violation_audit.summary,'') AS "violationSummary"
+      COALESCE(violation_audit.summary,'') AS "violationSummary",
+      (SELECT room.name FROM exam_rooms room WHERE room.id=es.room_id) AS "roomName"
     FROM exam_sessions es JOIN exams e ON e.id=es.exam_id JOIN question_banks b ON b.id=e.bank_id JOIN users u ON u.id=es.student_id
     LEFT JOIN LATERAL (
       SELECT
@@ -2442,6 +2485,13 @@ app.get('/api/results',allow('admin','teacher'),asyncRoute(async(req,res)=>{
     WHERE es.status IN ('completed','locked') AND ($1='admin' OR EXISTS(
       SELECT 1 FROM teacher_access ta WHERE ta.teacher_id=$2 AND ta.subject_id=b.subject_id AND (ta.class_name=e.class_name OR ta.class_name=ANY(regexp_split_to_array(e.class_name,'\\s*,\\s*')))
     )) AND ($3::bigint IS NULL OR e.id=$3) ORDER BY e.created_at DESC,u.full_name`,[req.session.user.role,req.session.user.id,examFilter]);
+  res.json(q.rows);
+}));
+app.get('/api/audit/assignments',allow('admin'),asyncRoute(async(req,res)=>{
+  const actions=['staff.update','staff.assignment','exam.proctors.set','room.create','room.update','room.delete'];
+  const q=await pool.query(`SELECT al.id,al.action,al.detail,al.created_at AS "createdAt",COALESCE(u.full_name,'Sistem') AS "actorName"
+    FROM audit_logs al LEFT JOIN users u ON u.id=al.user_id
+    WHERE al.action=ANY($1::text[]) ORDER BY al.created_at DESC,al.id DESC LIMIT 200`,[actions]);
   res.json(q.rows);
 }));
 app.get('/api/dashboard',allow('admin','teacher'),asyncRoute(async(req,res)=>{
