@@ -40,7 +40,7 @@ function assignmentSummary(row) {
     if (next.classNames?.length) parts.push(`Kelas: ${next.classNames.join(', ')}`);
     return parts.join(' · ') || 'Akses staf diperbarui.';
   }
-  if (String(row.action).startsWith('room.')) return detail.name ? `Ruang ${detail.name}` : 'Perubahan ruang ujian.';
+  if (String(row.action).startsWith('room.')) return detail.name || 'Perubahan ruang ujian.';
   return '';
 }
 
